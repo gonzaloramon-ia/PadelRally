@@ -1,0 +1,557 @@
+{
+  "human": {
+    "smash": [
+      {
+        "src": "assets/human/smash/smash_01.webp",
+        "bounds": [
+          92,
+          6,
+          498,
+          495
+        ]
+      },
+      {
+        "src": "assets/human/smash/smash_02.webp",
+        "bounds": [
+          20,
+          0,
+          477,
+          512
+        ]
+      },
+      {
+        "src": "assets/human/smash/smash_03.webp",
+        "bounds": [
+          46,
+          0,
+          477,
+          501
+        ]
+      }
+    ],
+    "backhand": [
+      {
+        "src": "assets/human/backhand/backhand_01.webp",
+        "bounds": [
+          17,
+          23,
+          486,
+          492
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_02.webp",
+        "bounds": [
+          44,
+          19,
+          505,
+          499
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_03.webp",
+        "bounds": [
+          13,
+          26,
+          506,
+          489
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_04.webp",
+        "bounds": [
+          19,
+          19,
+          500,
+          501
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_05.webp",
+        "bounds": [
+          21,
+          31,
+          502,
+          487
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_06.webp",
+        "bounds": [
+          32,
+          23,
+          498,
+          492
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_07.webp",
+        "bounds": [
+          0,
+          30,
+          493,
+          493
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_08.webp",
+        "bounds": [
+          103,
+          5,
+          440,
+          493
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_09.webp",
+        "bounds": [
+          51,
+          10,
+          501,
+          500
+        ]
+      },
+      {
+        "src": "assets/human/backhand/backhand_10.webp",
+        "bounds": [
+          117,
+          20,
+          418,
+          492
+        ]
+      }
+    ],
+    "backward": [
+      {
+        "src": "assets/human/backward/backward_01.webp",
+        "bounds": [
+          23,
+          20,
+          484,
+          512
+        ]
+      },
+      {
+        "src": "assets/human/backward/backward_02.webp",
+        "bounds": [
+          109,
+          14,
+          498,
+          499
+        ]
+      },
+      {
+        "src": "assets/human/backward/backward_03.webp",
+        "bounds": [
+          130,
+          16,
+          423,
+          493
+        ]
+      },
+      {
+        "src": "assets/human/backward/backward_04.webp",
+        "bounds": [
+          122,
+          12,
+          467,
+          504
+        ]
+      },
+      {
+        "src": "assets/human/backward/backward_05.webp",
+        "bounds": [
+          118,
+          16,
+          410,
+          488
+        ]
+      }
+    ],
+    "forehand": [
+      {
+        "src": "assets/human/forehand/forehand_01.webp",
+        "bounds": [
+          8,
+          25,
+          511,
+          493
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_02.webp",
+        "bounds": [
+          37,
+          21,
+          503,
+          496
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_03.webp",
+        "bounds": [
+          12,
+          19,
+          493,
+          501
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_04.webp",
+        "bounds": [
+          12,
+          19,
+          493,
+          501
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_05.webp",
+        "bounds": [
+          10,
+          31,
+          491,
+          487
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_06.webp",
+        "bounds": [
+          6,
+          26,
+          499,
+          489
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_07.webp",
+        "bounds": [
+          7,
+          19,
+          468,
+          499
+        ]
+      },
+      {
+        "src": "assets/human/forehand/forehand_08.webp",
+        "bounds": [
+          26,
+          23,
+          495,
+          492
+        ]
+      }
+    ],
+    "forward": [
+      {
+        "src": "assets/human/forward/forward_01.webp",
+        "bounds": [
+          0,
+          15,
+          498,
+          492
+        ]
+      },
+      {
+        "src": "assets/human/forward/forward_02.webp",
+        "bounds": [
+          118,
+          14,
+          488,
+          494
+        ]
+      },
+      {
+        "src": "assets/human/forward/forward_03.webp",
+        "bounds": [
+          125,
+          14,
+          458,
+          505
+        ]
+      },
+      {
+        "src": "assets/human/forward/forward_04.webp",
+        "bounds": [
+          23,
+          20,
+          484,
+          512
+        ]
+      },
+      {
+        "src": "assets/human/forward/forward_05.webp",
+        "bounds": [
+          118,
+          14,
+          488,
+          494
+        ]
+      }
+    ],
+    "glass": [
+      {
+        "src": "assets/human/glass/glass_01.webp",
+        "bounds": [
+          60,
+          13,
+          459,
+          495
+        ]
+      },
+      {
+        "src": "assets/human/glass/glass_02.webp",
+        "bounds": [
+          46,
+          16,
+          439,
+          499
+        ]
+      },
+      {
+        "src": "assets/human/glass/glass_03.webp",
+        "bounds": [
+          0,
+          11,
+          492,
+          493
+        ]
+      },
+      {
+        "src": "assets/human/glass/glass_04.webp",
+        "bounds": [
+          49,
+          11,
+          487,
+          500
+        ]
+      },
+      {
+        "src": "assets/human/glass/glass_05.webp",
+        "bounds": [
+          137,
+          15,
+          396,
+          497
+        ]
+      }
+    ],
+    "idle": [
+      {
+        "src": "assets/human/idle/idle_01.webp",
+        "bounds": [
+          61,
+          30,
+          474,
+          482
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_02.webp",
+        "bounds": [
+          38,
+          30,
+          451,
+          482
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_03.webp",
+        "bounds": [
+          117,
+          11,
+          397,
+          485
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_04.webp",
+        "bounds": [
+          137,
+          11,
+          382,
+          481
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_05.webp",
+        "bounds": [
+          32,
+          27,
+          454,
+          485
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_06.webp",
+        "bounds": [
+          58,
+          27,
+          480,
+          485
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_07.webp",
+        "bounds": [
+          0,
+          18,
+          479,
+          495
+        ]
+      },
+      {
+        "src": "assets/human/idle/idle_08.webp",
+        "bounds": [
+          33,
+          18,
+          512,
+          495
+        ]
+      }
+    ],
+    "run_left": [
+      {
+        "src": "assets/human/run_left/run_left_01.webp",
+        "bounds": [
+          102,
+          27,
+          459,
+          482
+        ]
+      },
+      {
+        "src": "assets/human/run_left/run_left_02.webp",
+        "bounds": [
+          78,
+          40,
+          496,
+          477
+        ]
+      },
+      {
+        "src": "assets/human/run_left/run_left_03.webp",
+        "bounds": [
+          106,
+          24,
+          452,
+          487
+        ]
+      },
+      {
+        "src": "assets/human/run_left/run_left_04.webp",
+        "bounds": [
+          127,
+          20,
+          434,
+          484
+        ]
+      },
+      {
+        "src": "assets/human/run_left/run_left_05.webp",
+        "bounds": [
+          43,
+          15,
+          506,
+          501
+        ]
+      },
+      {
+        "src": "assets/human/run_left/run_left_06.webp",
+        "bounds": [
+          27,
+          33,
+          506,
+          504
+        ]
+      },
+      {
+        "src": "assets/human/run_left/run_left_07.webp",
+        "bounds": [
+          41,
+          26,
+          477,
+          494
+        ]
+      }
+    ],
+    "run_right": [
+      {
+        "src": "assets/human/run_right/run_right_01.webp",
+        "bounds": [
+          27,
+          8,
+          467,
+          487
+        ]
+      },
+      {
+        "src": "assets/human/run_right/run_right_02.webp",
+        "bounds": [
+          88,
+          20,
+          421,
+          483
+        ]
+      },
+      {
+        "src": "assets/human/run_right/run_right_03.webp",
+        "bounds": [
+          14,
+          8,
+          486,
+          494
+        ]
+      },
+      {
+        "src": "assets/human/run_right/run_right_04.webp",
+        "bounds": [
+          43,
+          13,
+          504,
+          480
+        ]
+      },
+      {
+        "src": "assets/human/run_right/run_right_05.webp",
+        "bounds": [
+          40,
+          9,
+          488,
+          492
+        ]
+      },
+      {
+        "src": "assets/human/run_right/run_right_06.webp",
+        "bounds": [
+          104,
+          11,
+          441,
+          491
+        ]
+      },
+      {
+        "src": "assets/human/run_right/run_right_07.webp",
+        "bounds": [
+          109,
+          18,
+          473,
+          487
+        ]
+      }
+    ]
+  },
+  "robot": {
+    "robot-ready-clean": "assets/robot/robot-ready-clean.webp",
+    "robot-recover-clean": "assets/robot/robot-recover-clean.webp",
+    "robot-run-right-a": "assets/robot/robot-run-right-a.webp",
+    "robot-run-right-b": "assets/robot/robot-run-right-b.webp",
+    "robot-run-left-a": "assets/robot/robot-run-left-a.webp",
+    "robot-run-left-b": "assets/robot/robot-run-left-b.webp",
+    "robot-run-clean": "assets/robot/robot-run-clean.webp",
+    "robot-backhand-prepare-clean": "assets/robot/robot-backhand-prepare-clean.webp",
+    "robot-backhand-clean": "assets/robot/robot-backhand-clean.webp",
+    "robot-forehand-clean": "assets/robot/robot-forehand-clean.webp",
+    "robot-forehand-followthrough-clean": "assets/robot/robot-forehand-followthrough-clean.webp"
+  }
+}
