@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PADEL RALLY — A3 Online Coop</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;background:#06111f;color:#eff8ff;font:15px system-ui,Segoe UI,sans-serif}
+main{max-width:1500px;margin:0 auto;padding:12px 16px 28px}
+h1{font-size:19px;margin:0 0 9px;letter-spacing:.03em}
+#toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-bottom:8px}
+button,input{border:1px solid #396584;background:#102c49;color:#f3fbff;border-radius:6px;padding:8px 12px;font:inherit}
+button{cursor:pointer}button:disabled{opacity:.4;cursor:default}button:not(:disabled):hover{background:#204c70}
+input{width:111px;text-transform:uppercase;letter-spacing:.12em}
+#room{font:700 18px ui-monospace,monospace;letter-spacing:.18em;color:#fff}
+#connection{color:#a9d4ec;font-size:13px;padding:4px 0 10px}
+#gameframe{display:none;border:1px solid #426b87;border-radius:4px;width:100%;aspect-ratio:1672 / 941;background:#102034}
+#gameframe.guest{pointer-events:none}
+#instructions{color:#bbd4e3;line-height:1.6;font-size:13px;margin:8px 0 0}
+#status{color:#9fd6ef}#offline{color:#d5e6f1;font-size:13px}
+@media (max-width:750px){main{padding:9px}h1{font-size:16px}button,input{padding:7px 8px;font-size:13px}}
+
+#padel-controls-dialog[hidden]{display:none}#padel-controls-dialog{position:fixed;inset:0;z-index:999;background:#000c;display:grid;place-items:center;padding:12px}#padel-controls-dialog section{background:#0e233b;border:1px solid #5485a7;color:#eef8ff;border-radius:12px;width:min(520px,100%);max-height:92dvh;overflow:auto;padding:18px;font:15px system-ui,Segoe UI,sans-serif}#padel-controls-dialog header,#padel-controls-dialog .padel-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}#padel-controls-dialog button,#padel-controls-dialog select{color:#fff;background:#164065;border:1px solid #659ac0;border-radius:6px;padding:9px 12px;font:inherit;cursor:pointer}#padel-ctrl-note{color:#acdaee;font-size:13px;min-height:34px}#padel-ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 13px}.padel-control-row{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid #ffffff1b;padding:5px 0}.padel-control-row span{font-size:12px}.padel-control-row button{min-width:66px;font-size:13px}#padel-config-button{position:absolute;right:1%;top:1%;z-index:5;color:#fff;background:#153853dd;border:1px solid #86abbd;border-radius:5px;padding:5px 9px;cursor:pointer}@media(max-width:520px){#padel-ctrl-grid{grid-template-columns:1fr}}
+</style></head><body><main>
+<h1>PADEL RALLY — DOBLES ONLINE COOPERATIVO · ALPHA</h1>
+<div id="toolbar"><button id="create" disabled>Crear sala</button><input id="joincode" aria-label="Código de invitación" placeholder="CÓDIGO" maxlength="6" autocomplete="off"><button id="join" disabled>Unirse</button><button id="padel-config-button" type="button" style="position:static">TECLAS</button><span>Sala: <b id="room">—</b></span><button id="copy" hidden>Copiar invitación</button><button id="leave" hidden>Salir</button></div>
+<div id="connection"><span id="netstats">Conectando al servidor…</span> <span id="status"></span></div>
+<iframe id="gameframe" title="Padel Rally Online"></iframe>
+<p id="instructions">BLANCO (anfitrión) + AMARILLO (invitado) contra dos robots. Flechas mover/apuntar · Z revés · X derecha · C globo · V dejada · Espacio remate · Shift correr · S/A/D contraparedes. Para comenzar, el anfitrión pulsa JUGAR sobre la cancha. La simulación ocurre exclusivamente en el navegador del anfitrión.</p>
+<p id="offline">Sin sala: <a href="index.html?skipintro=1" style="color:#8edcff">volver al menú principal</a>.</p>
+</main><script src="controls.js"></script><script>PadelControls.mount(document.getElementById("padel-config-button"));</script><script src="net/client.js"></script><script>
+(()=>{'use strict';
+ const el=id=>document.getElementById(id),write=(id,v)=>{el(id).textContent=v;};
+ const protocol=location.protocol==='https:'?'wss:':'ws:',net=new PadelTransport(protocol+'//'+location.host+'/ws');
+ let role=null,code='',ready=false,snapLast=-1,lastRemote=0,lastInputTime=0;
+ let haveFrame=false, frame=null;
+ const keys={},controls={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',KeyZ:'backhand',KeyX:'forehand',KeyC:'lob',KeyV:'drop',Space:'smash',ShiftLeft:'sprint',ShiftRight:'sprint',KeyS:'rear',KeyA:'leftGlass',KeyD:'rightGlass'};
+ const bridge=()=>{try{return el('gameframe').contentWindow?.PadelOnlineBridge;}catch(_){return null;}};
+ const note=s=>write('status',s);
+ function release(){for(const key of Object.keys(keys))delete keys[key];if(role==='guest')net.input({});}
+ function startFrame(mode){
+  const iframe=el('gameframe');iframe.style.display='block';iframe.classList.toggle('guest',mode==='guest');
+  iframe.onload=()=>{haveFrame=true;frame=bridge();frame?.setMode(mode);if(mode==='host')frame?.setRemoteConnected(ready);};
+  iframe.src='partido.html';
+ }
+ net.onstatus=note;
+ net.onmessage=m=>{
+  if(m.type==='error'){note('Error: '+m.message);return;}
+  if(m.type==='joined'){
+   role=m.role;code=m.code;write('room',code);el('create').disabled=true;el('join').disabled=true;el('copy').hidden=false;el('leave').hidden=false;
+   el('offline').hidden=true;startFrame(role);note(role==='host'?'Sos BLANCO. Iniciá el partido con JUGAR.':'Sos AMARILLO. Esperá al anfitrión.');
+  }else if(m.type==='room'){
+   ready=!!m.ready;const b=bridge();if(role==='host')b?.setRemoteConnected(ready);
+   note(ready?'Dos jugadores conectados':role==='host'?'Esperando al jugador amarillo':'Esperando al anfitrión');
+   if(role==='guest'&&!ready)release();
+  }else if(m.type==='snapshot'&&role==='guest'){
+   if(m.seq>snapLast){snapLast=m.seq;bridge()?.applySnapshot(m.state,m.seq);}
+  }else if(m.type==='remote_input'&&role==='host'){
+   bridge()?.receiveRemoteInput(m.buttons);
+  }else if(m.type==='pong'&&typeof m.sent==='number'){
+   const ms=Math.round(performance.now()-m.sent);write('netstats',
+    (role==='host'?'BLANCO':'AMARILLO')+' · '+(ready?'2/2 conectados':'Esperando compañero')+' · latencia '+ms+' ms · ');
+  }else if(m.type==='ended'){
+   ready=false;note(m.reason||'Sala finalizada');release();el('gameframe').style.display='none';
+  }
+ };
+ el('create').onclick=()=>net.create();
+ el('join').onclick=()=>net.join(el('joincode').value);
+ el('joincode').onkeydown=e=>{if(e.key==='Enter')net.join(el('joincode').value);};
+ el('leave').onclick=()=>{net.close();location.reload();};
+ el('copy').onclick=async()=>{
+  const url=new URL(location.href);url.searchParams.set('sala',code);
+  const txt=url.toString();
+  try{await navigator.clipboard.writeText(txt);note('Enlace copiado');}
+  catch(_){note('Compartí este enlace: '+txt);}
+ };
+ const invited=new URLSearchParams(location.search).get('sala');if(invited)el('joincode').value=invited.toUpperCase().slice(0,6);
+ function transmit(){if(role==='guest'&&ready)net.input(keys);lastInputTime=performance.now();}
+ function guestKey(code,down){const button=PadelControls.buttonFor(code);if(role!=='guest'||!button||PadelControls.visible())return;
+  if(down){if(keys[button])return;keys[button]=true;bridge()?.unlockAudio();}
+  else delete keys[button];
+  transmit();
+ }
+ window.addEventListener('message',e=>{
+  if(e.origin!==location.origin||e.source!==el('gameframe').contentWindow||e.data?.type!=='padel-key')return;
+  guestKey(e.data.code,e.data.down===true);
+ });
+ window.addEventListener('keydown',e=>{
+  if(role!=='guest'||!PadelControls.buttonFor(e.code)||e.target===el('joincode'))return;
+  e.preventDefault();if(e.repeat)return;
+  guestKey(e.code,true);
+ });
+ window.addEventListener('keyup',e=>{
+  if(role!=='guest'||!PadelControls.buttonFor(e.code))return;e.preventDefault();guestKey(e.code,false);
+ });
+ window.addEventListener('blur',release);
+ setInterval(()=>{
+  if(net.socket?.readyState!==1)return;
+  if(role==='host'){
+   const b=bridge(),state=b?.getSnapshot();if(state)net.snapshot(state);
+  }else if(role==='guest'&&ready&&performance.now()-lastInputTime>110)transmit();
+ },75);
+ setInterval(()=>{if(net.socket?.readyState===1)net.send({type:'ping',sent:performance.now()});},3000);
+ net.connect().then(()=>{el('create').disabled=false;el('join').disabled=false;note('Servidor disponible. Creá una sala o ingresá un código.');}).catch(()=>note('Servidor no disponible. Ejecutá INICIAR_ONLINE_LOCAL.bat.'));
+})();
+</script></body></html>

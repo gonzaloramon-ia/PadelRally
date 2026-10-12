@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PADEL RALLY — Modo Carrera</title>
+<style>
+:root{color-scheme:dark;--cyan:#27c7ff;--panel:#081827ee;--muted:#8fb8d0}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#030914;color:#f4fbff;font-family:system-ui,Segoe UI,Arial,sans-serif}
+body{min-height:100vh;background:radial-gradient(circle at 50% 0,#123458 0,#071524 34%,#020811 78%)}
+header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px clamp(14px,3vw,42px);background:#030a13e8;border-bottom:1px solid #245374;backdrop-filter:blur(10px)}
+.brand{display:flex;flex-direction:column;gap:2px}.brand strong{font-size:clamp(21px,3vw,38px);font-style:italic;letter-spacing:.04em}.brand span{color:#76cffa;font-size:13px;letter-spacing:.14em}
+.top-actions{display:flex;gap:9px}.btn{border:1px solid #4e9bc7;background:#0c2c47;color:#fff;border-radius:8px;padding:10px 15px;font-weight:750;cursor:pointer}.btn:hover{background:#145982}.btn.secondary{background:#0a1d2d;border-color:#365e77}
+main{width:min(1440px,96vw);margin:0 auto;padding:24px 0 42px}
+.hero{display:flex;justify-content:space-between;align-items:end;gap:20px;margin:0 4px 20px}.hero h1{font-size:clamp(28px,4vw,52px);margin:0}.hero p{margin:5px 0 0;color:#a8cde2}.progress-summary{text-align:right;color:#dff6ff}.progress-summary strong{font-size:28px;color:#50d9ff}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{position:relative;min-height:215px;border:1px solid #2b6e94;border-radius:14px;overflow:hidden;background:#07131f;cursor:pointer;isolation:isolate;box-shadow:0 9px 30px #0008;transition:transform .15s,border-color .15s,box-shadow .15s}
+.card:hover{transform:translateY(-2px);border-color:#53ccff;box-shadow:0 12px 34px #000b,0 0 20px #0faefb20}.card.locked{cursor:not-allowed;filter:saturate(.5);border-color:#334552}.card.locked:hover{transform:none;box-shadow:0 9px 30px #0008}
+.card-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}.card::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#02091225 20%,#020912e8 78%,#020912fa 100%)}
+.card-head{display:flex;justify-content:space-between;align-items:start;padding:14px}.number{font-weight:900;font-size:12px;letter-spacing:.15em;background:#071828d9;border:1px solid #4a99c3;border-radius:999px;padding:6px 9px}.state{font-weight:850;font-size:11px;letter-spacing:.08em;border-radius:999px;padding:6px 9px;background:#102940d9}.state.won{color:#9dffbd;border:1px solid #3dbc70}.state.lock{color:#a9b7c2;border:1px solid #586773}
+.card-copy{position:absolute;left:15px;right:15px;bottom:14px}.card h2{font-size:24px;margin:0 0 2px}.card p{margin:0;color:#a9cce0;font-size:13px}.rounds{display:flex;gap:5px;margin-top:10px}.rounds i{width:24px;height:6px;border-radius:10px;background:#29445a}.rounds i.done{background:#31d9ff}.rounds i.current{background:#fff;box-shadow:0 0 10px #fff8}.special{position:absolute;right:13px;bottom:14px;color:#ffe69b;background:#403318d9;border:1px solid #a9822d;border-radius:7px;padding:5px 7px;font-size:10px;font-weight:850;letter-spacing:.05em;transform:translateY(-54px)}
+.unlock-note{margin:20px 4px 0;color:#9cc3d8;font-size:13px}
+#modal[hidden]{display:none}#modal{position:fixed;inset:0;z-index:50;background:#000c;display:grid;place-items:center;padding:18px}.dialog{width:min(520px,96vw);border:1px solid #41aee4;background:linear-gradient(145deg,#0d2944,#071522);border-radius:16px;padding:24px;box-shadow:0 20px 60px #000d}.dialog h2{font-size:29px;margin:0 0 4px}.dialog p{color:#a9cde2;margin:7px 0 18px}.format-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.format-btn{padding:20px 10px;border:1px solid #4e93ba;background:#0c2a42;color:#fff;border-radius:11px;font:850 20px system-ui;cursor:pointer}.format-btn:hover,.format-btn.selected{background:#126ba3;border-color:#64d8ff;box-shadow:0 0 18px #1abaff44}.dialog .footer{display:flex;gap:9px;justify-content:flex-end;margin-top:19px}.round-info{padding:10px 12px;border-radius:9px;background:#071522;border:1px solid #254e69;color:#cceaff;margin-bottom:15px}
+@media(max-width:600px){header{position:relative}.hero{align-items:start;flex-direction:column}.progress-summary{text-align:left}.grid{grid-template-columns:1fr}.format-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><strong>PADEL RALLY</strong><span>MODO CARRERA · ACÁ EMPEZÁS A HACER HISTORIA</span></div>
+  <div class="top-actions"><button class="btn secondary" id="reset" type="button">REINICIAR CARRERA</button><button class="btn" id="back" type="button">MENÚ</button></div>
+</header>
+<main>
+  <section class="hero"><div><h1>Elegí tu próximo torneo</h1><p>Cada torneo tiene 7 partidos. Todos los partidos se juegan al mejor de 3 games.</p></div><div class="progress-summary"><strong id="wins-count">0</strong><br>torneos ganados</div></section>
+  <section class="grid" id="grid"></section>
+  <p class="unlock-note">Torneos 1–5 disponibles desde el inicio · 1 torneo ganado desbloquea el 6 · 2 desbloquean el 7 · con 3 ganados se libera todo.</p>
+</main>
+<div id="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title">Torneo</h2><p id="modal-sub"></p>
+    <div class="round-info" id="round-info"></div>
+    <div class="format-grid" id="format-grid"><button class="format-btn" data-format="1v1" type="button">1 vs 1</button><button class="format-btn" data-format="2v2" type="button">2 vs 2</button></div>
+    <div class="footer"><button class="btn secondary" id="cancel" type="button">VOLVER</button><button class="btn" id="play" type="button">JUGAR</button></div>
+  </section>
+</div>
+<script>
+(()=>{'use strict';
+const STORE='padel-rally-career-v1';
+const curve=[
+ {skill:0,tempo:1},
+ {skill:1,tempo:1},
+ {skill:1,tempo:2},
+ {skill:2,tempo:2},
+ {skill:1,tempo:3},
+ {skill:2,tempo:3},
+ {skill:2,tempo:4}
+];
+const tournaments=[
+ {id:1,title:'Torneo 1',theme:'Original',court:'assets/court_clean.png'},
+ {id:2,title:'Torneo 2',theme:'Indoor Azul',court:'assets/courts/indoor_azul.png'},
+ {id:3,title:'Torneo 3',theme:'Medieval',court:'assets/courts/medieval.png'},
+ {id:4,title:'Torneo 4',theme:'Prisión / Underground',court:'assets/courts/prision.png'},
+ {id:5,title:'Torneo 5',theme:'Indoor Naranja',court:'assets/courts/indoor_naranja.png'},
+ {id:6,title:'Torneo 6',theme:'Biofuturista',court:'assets/courts/eco.png'},
+ {id:7,title:'Torneo 7',theme:'Steampunk',court:'assets/courts/steampunk.png'},
+ {id:8,title:'Torneo 8',theme:'Neón Azul',court:'assets/courts/neon.png'},
+ {id:9,title:'Torneo 9',theme:'Celestial',court:'assets/courts/celestial.png',special:'celestial',specialLabel:'GRAVEDAD REDUCIDA'},
+ {id:10,title:'Torneo 10',theme:'Cyberpunk',court:'assets/courts/cyberpunk.png',special:'cyber',specialLabel:'PELOTA DE ENERGÍA'},
+ {id:11,title:'Torneo 11',theme:'Ártica',court:'assets/courts/artica.png',special:'arctic',specialLabel:'SUPERFICIE DE HIELO'}
+];
+function fresh(){return{won:[],rounds:{},formats:{}}}
+function read(){try{const p=JSON.parse(localStorage.getItem(STORE));return p&&typeof p==='object'?{...fresh(),...p}:fresh();}catch(_){return fresh();}}
+function save(p){localStorage.setItem(STORE,JSON.stringify(p));}
+let progress=read(),selected=null,selectedFormat=null;
+function wonCount(){return new Set(progress.won||[]).size;}
+function unlocked(id){const n=wonCount();return id<=5||id===6&&n>=1||id===7&&n>=2||id>=8&&n>=3;}
+function currentRound(id){return Math.max(1,Math.min(7,Number(progress.rounds?.[id])||1));}
+function isWon(id){return (progress.won||[]).includes(id);}
+function render(){
+ document.getElementById('wins-count').textContent=wonCount();const grid=document.getElementById('grid');grid.innerHTML='';
+ for(const t of tournaments){const open=unlocked(t.id),won=isWon(t.id),r=currentRound(t.id);const card=document.createElement('article');card.className='card'+(open?'':' locked');
+  const dots=Array.from({length:7},(_,i)=>`<i class="${won||i<r-1?'done':!won&&i===r-1?'current':''}"></i>`).join('');
+  card.innerHTML=`<img class="card-bg" src="${t.court}" alt=""><div class="card-head"><span class="number">TORNEO ${String(t.id).padStart(2,'0')}</span><span class="state ${won?'won':open?'':'lock'}">${won?'GANADO':open?'DISPONIBLE':'BLOQUEADO'}</span></div><div class="card-copy"><h2>${t.theme}</h2><p>${won?'Completado · podés volver a jugarlo':open?`Partido ${r} de 7`:'Seguí ganando torneos para desbloquearlo'}</p><div class="rounds">${dots}</div></div>${t.specialLabel?`<span class="special">${t.specialLabel}</span>`:''}`;
+  if(open)card.addEventListener('click',()=>openTournament(t));grid.append(card);
+ }
+}
+function openTournament(t){selected=t;const won=isWon(t.id),r=won?1:currentRound(t.id);const saved=progress.formats?.[t.id];selectedFormat=won?null:(saved||null);
+ document.getElementById('modal-title').textContent=`${t.title} · ${t.theme}`;document.getElementById('modal-sub').textContent=t.specialLabel?`Cancha especial: ${t.specialLabel.toLowerCase()}.`:'Elegí modalidad para este torneo.';
+ document.getElementById('round-info').textContent=won?'Torneo completado. Si volvés a jugarlo, empezás desde el partido 1.':`Partido ${r} de 7`;
+ const formatGrid=document.getElementById('format-grid');formatGrid.style.display=saved&&!won?'none':'grid';
+ document.querySelectorAll('.format-btn').forEach(b=>b.classList.toggle('selected',b.dataset.format===selectedFormat));
+ document.getElementById('play').textContent=saved&&!won?`CONTINUAR ${saved.toUpperCase()}`:'JUGAR';document.getElementById('modal').hidden=false;
+}
+document.querySelectorAll('.format-btn').forEach(b=>b.addEventListener('click',()=>{selectedFormat=b.dataset.format;document.querySelectorAll('.format-btn').forEach(x=>x.classList.toggle('selected',x===b));}));
+document.getElementById('cancel').addEventListener('click',()=>document.getElementById('modal').hidden=true);
+document.getElementById('play').addEventListener('click',()=>{if(!selected)return;const won=isWon(selected.id);let format=progress.formats?.[selected.id];if(won||!format){format=selectedFormat;if(!format){alert('Elegí 1 vs 1 o 2 vs 2.');return;}progress.formats[selected.id]=format;if(won)progress.rounds[selected.id]=1;save(progress);}const round=won?1:currentRound(selected.id),cfg=curve[round-1];const p=new URLSearchParams({fromMenu:'1',career:'1',tournament:String(selected.id),round:String(round),format,tempo:String(cfg.tempo),skill:String(cfg.skill),court:selected.court,ambiente:'1',efectos:'1'});if(selected.special)p.set('special',selected.special);location.href='partido.html?'+p;});
+document.getElementById('back').addEventListener('click',()=>location.href='index.html?skipintro=1');
+document.getElementById('reset').addEventListener('click',()=>{if(confirm('¿Reiniciar todo el progreso del Modo Carrera?')){progress=fresh();save(progress);render();}});
+render();
+})();
+</script>
+</body></html>

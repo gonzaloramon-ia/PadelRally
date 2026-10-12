@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PADEL RALLY — Partido rápido</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+html,body{margin:0;min-width:0;width:100%;height:100%;overflow:hidden;background:#050a12;color:#eaf6ff;font:14px system-ui,Segoe UI,sans-serif}
+body{display:grid;place-items:center;height:100vh;height:100dvh}
+main{position:relative;width:min(100vw,calc(100dvh * 1672 / 941));height:auto;max-width:none;max-height:100dvh;aspect-ratio:1672/941;margin:auto;display:flex;align-items:center;justify-content:center}
+main:fullscreen{max-width:none;width:100%;height:100%;background:#050a12}
+canvas{display:block;max-height:100%;max-width:100%;width:100%;height:auto;aspect-ratio:1672/941;outline:none;object-fit:contain;touch-action:manipulation}
+#status{position:absolute;left:-9999px}
+
+#padel-controls-dialog[hidden]{display:none}#padel-controls-dialog{position:fixed;inset:0;z-index:999;background:#000c;display:grid;place-items:center;padding:12px}#padel-controls-dialog section{background:#0e233b;border:1px solid #5485a7;color:#eef8ff;border-radius:12px;width:min(520px,100%);max-height:92dvh;overflow:auto;padding:18px;font:15px system-ui,Segoe UI,sans-serif}#padel-controls-dialog header,#padel-controls-dialog .padel-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}#padel-controls-dialog button,#padel-controls-dialog select{color:#fff;background:#164065;border:1px solid #659ac0;border-radius:6px;padding:9px 12px;font:inherit;cursor:pointer}#padel-ctrl-note{color:#acdaee;font-size:13px;min-height:34px}#padel-ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 13px}.padel-control-row{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid #ffffff1b;padding:5px 0}.padel-control-row span{font-size:12px}.padel-control-row button{min-width:66px;font-size:13px}#padel-config-button{position:absolute;right:1%;top:1%;z-index:5;color:#fff;background:#153853dd;border:1px solid #86abbd;border-radius:5px;padding:5px 9px;cursor:pointer}@media(max-width:520px){#padel-ctrl-grid{grid-template-columns:1fr}}
+#padel-back-menu{position:absolute;left:1%;top:1%;z-index:6;background:#0c263dcc;border:1px solid #76b4e6;color:#fff;border-radius:6px;font:600 12px system-ui,sans-serif;padding:5px 10px;cursor:pointer}
+#padel-back-menu:hover{background:#155b91}</style>
+</head>
+<body>
+<main><canvas id="game" width="1672" height="941" tabindex="0" aria-label="PADEL RALLY DOBLES: flechas movimiento y dirección, Z revés, X derecha, C globo, V dejada, Espacio remate, S contrapared, F pantalla completa"></canvas><button id="padel-back-menu" type="button" title="Volver al menú principal">MENÚ</button><button id="padel-config-button" type="button">TECLAS</button><div id="status" aria-live="polite">Cargando recursos</div></main>
+<script>
+(()=>{
+ const q=new URLSearchParams(location.search),career=q.get('career')==='1',back=document.getElementById('padel-back-menu');
+ if(career){back.textContent='CARRERA';back.title='Volver al Modo Carrera';}
+ back.addEventListener('click',()=>{
+  const label=career?'¿Volver al Modo Carrera? La partida actual se perderá.':'¿Volver al menú principal? La partida actual se perderá.';
+  if(confirm(label))location.href=career?'carrera.html':'index.html?skipintro=1';
+ });
+})();
+</script>
+<script src="controls.js"></script>
+<script>PadelControls.mount(document.getElementById("padel-config-button"));</script>
+<script src="assets.js"></script>
+<script src="audio.js"></script>
+<script src="yellow.js"></script>
+<script>
+// Rollback visual por URL: ?original=1 | Amarillo experimental: ?yellownew=1
+window.PADEL_A44_ENABLED = new URLSearchParams(location.search).get('original') !== '1';
+window.PADEL_A44_YELLOW = new URLSearchParams(location.search).get('yellownew') === '1';
+// A4.5: full left/right step cycles and red-racket yellow frames.
+// ?original=1 retains original motion; ?yellowold=1 compares old yellow gait.
+window.PADEL_A45_ENABLED = window.PADEL_A44_ENABLED;
+window.PADEL_A45_YELLOW_OLD = new URLSearchParams(location.search).get('yellowold') === '1';
+</script>
+<script src="a44-sprites.js"></script>
+<script src="a45-sprites.js"></script>
+<script src="a48-sprites.js"></script>
+<script>window.PADEL_A48_ENABLED = window.PADEL_A45_ENABLED && !new URLSearchParams(location.search).has("a47visual");</script>
+<script src="game.js"></script>
+</body></html>

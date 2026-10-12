@@ -1,0 +1,16 @@
+PADEL RALLY — PRUEBA DE ANIMACION DEL BLANCO (A1)
+
+Base: Online Coop Alpha, preservada. Este ZIP es una COPIA de prueba, no reemplaza la Alpha aprobada.
+
+Cambios SOLO visuales en jugador blanco:
+ - Cadencia de sprites de pasos proporcional a metros recorridos, no a FPS fijo.
+ - Ajustes leves de postura al estar quieto y al frenar.
+ - Para golpes VALIDOS al limite del alcance, mostrar fugazmente una pose de estirada de los sprites existentes.
+ - Nuevos estados de animacion del blanco incluidos en snapshots para el invitado.
+
+No se modifico: posicion real de jugadores, velocidad, fisica, rebotes, reglas, golpes, IA, sonido, amarillo, HUD ni camara.
+El blanco aun tiene limitaciones por la cantidad/angulo de sprites disponibles.
+
+Prueba: correr a los costados y diagonales; detenerse; alcanzar pelotas laterales en el ultimo instante; comprobar que no se puedan devolver pelotas antes inalcanzables.
+
+Iniciar igual que la Alpha anterior con INICIAR_ONLINE_LOCAL.bat.

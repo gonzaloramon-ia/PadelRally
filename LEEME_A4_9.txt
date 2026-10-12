@@ -1,0 +1,31 @@
+PADEL RALLY A4.9 — MENÚ Y SAQUE (11 OCTUBRE 2026)
+
+PARA JUGAR
+1. Descomprimir todo el ZIP.
+2. Abrir index.html (la intro de 720p se reproduce; se puede saltear).
+3. En el menú elegir PARTIDO RÁPIDO, configurar opciones o créditos.
+4. En el partido, el botón MENÚ permite regresar sin repetir la intro.
+
+CAMBIOS DESDE A4.8
+- Botones reales (en lugar de hotspots transparentes). Se ocultan solo las letras
+  pregrabadas en el lateral izquierdo de la imagen de menú aprobada. La cancha,
+  los cuatro personajes y el logo no se modificaron.
+- Un único resaltado activo; sin rectángulos superpuestos.
+- Fondo estático alineado con botones; blur de paneles reducido.
+- CONFIGURAR TECLAS legible en ventana centrada, con remapeo A/B.
+- Orden de saque 2 contra 2: Blanco -> Robot 1 -> Amarillo -> Robot 2.
+- Los dos receptores conservan su lado asignado entre puntos.
+- Se conserva la duración de la intro (16,17 s) y su peso (~6,4 MB).
+
+SIN CAMBIOS: física, golpes, fuerza, rebotes, IA de rallies, sprites, cinco
+velocidades, dificultad y audio. El marcador 15/30/40/ventaja y games sigue
+siendo el existente, pero todavía no tiene sets ni tie-break reglamentarios.
+
+NO IMPLEMENTADO AÚN: sets y tie-break; 1 vs 1, 2 vs 1 / 1 vs 2;
+Modo Entrenamiento y Modo Carrera; animación ambiental del menú;
+créditos de producción definitivos.
+
+VALIDACIÓN: 11 tests JS aprobados, más prueba aislada de render del menú,
+créditos, opciones y remapeo en Chromium. El navegador del entorno bloqueó
+navegación local HTTP/file, por lo que la prueba de la aplicación completa
+abierta desde index.html sigue pendiente de validación manual.

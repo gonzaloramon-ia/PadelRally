@@ -1,0 +1,11 @@
+A4.6 CAMBIOS RESPECTO DE A4.5
+- Distribución 65/35 de objetivos por cada devolución robot.
+- Selección de interceptor por sector, posibilidad de rescate y
+  reasignación estable de lado si el blanco cruza la cancha.
+- Separación física entre compañeros al solaparse.
+- Animación de pasos del blanco durante la colocación previa al saque.
+- Dos velocidades solo de pelota: +10 % y +20 % frente a RÁPIDO;
+  jugadores mantienen velocidad nominal de RÁPIDO.
+- Menú de 5 ritmos; teclas 8 y 9 para los dos nuevos.
+- Física de saque, golpe, rebotes y colisiones de pelota sin cambios.
+- Salto nuevo en remate diferido para una versión posterior.
