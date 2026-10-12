@@ -1,0 +1,123 @@
+{
+  "white_serve_prepare": {
+    "src": "assets/a44/white_serve_prepare.webp",
+    "bounds": [
+      54,
+      22,
+      458,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_listo_para_servir.png"
+  },
+  "white_serve_forehand": {
+    "src": "assets/a44/white_serve_forehand.webp",
+    "bounds": [
+      18,
+      22,
+      493,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_acción_desde_atrás.png"
+  },
+  "white_serve_backhand": {
+    "src": "assets/a44/white_serve_backhand.webp",
+    "bounds": [
+      37,
+      22,
+      474,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_saque_de_revés.png"
+  },
+  "white_low_defense": {
+    "src": "assets/a44/white_low_defense.webp",
+    "bounds": [
+      22,
+      22,
+      490,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_golpe_bajo.png"
+  },
+  "white_smash_prepare": {
+    "src": "assets/a44/white_smash_prepare.webp",
+    "bounds": [
+      123,
+      22,
+      389,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_pleno_saque.png"
+  },
+  "white_smash_strike": {
+    "src": "assets/a44/white_smash_strike.webp",
+    "bounds": [
+      73,
+      22,
+      439,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_salto_con_raqueta.png"
+  },
+  "white_smash_recover": {
+    "src": "assets/a44/white_smash_recover.webp",
+    "bounds": [
+      56,
+      22,
+      455,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_tras_un_smash.png"
+  },
+  "yellow_serve_prepare": {
+    "src": "assets/a44/yellow_serve_prepare.webp",
+    "bounds": [
+      80,
+      22,
+      431,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_preparando_el_saque.png"
+  },
+  "yellow_serve_release": {
+    "src": "assets/a44/yellow_serve_release.webp",
+    "bounds": [
+      75,
+      22,
+      436,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_acción_con_raqueta.png"
+  },
+  "yellow_serve_finish": {
+    "src": "assets/a44/yellow_serve_finish.webp",
+    "bounds": [
+      102,
+      22,
+      411,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_pleno_remate.png"
+  },
+  "yellow_serve_recover": {
+    "src": "assets/a44/yellow_serve_recover.webp",
+    "bounds": [
+      111,
+      22,
+      401,
+      504
+    ],
+    "anchorX": 0.5,
+    "source": "jugador_de_pádel_en_recuperación.png"
+  }
+}
