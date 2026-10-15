@@ -3,6 +3,16 @@
 const gameQuery=typeof location==='undefined'||typeof URLSearchParams==='undefined'?{get:()=>null}:new URLSearchParams(location.search);
 const careerMode=gameQuery.get('career')==='1',careerTournament=Math.max(0,Number(gameQuery.get('tournament'))||0),careerRound=Math.max(1,Number(gameQuery.get('round'))||1);
 const requestedFormat=gameQuery.get('format')||'2v2',specialMode=gameQuery.get('special')||'';
+const careerPlayerName=(gameQuery.get('player')||'P1').trim().slice(0,12)||'P1';
+const quickPlayerName=(gameQuery.get('player')||'P1').trim().slice(0,12)||'P1';
+const careerPartnerName=(gameQuery.get('ally')||'ALIADO').trim().slice(0,12)||'ALIADO';
+const careerRacket=(gameQuery.get('racket')||'clasica').trim().slice(0,20)||'clasica';
+const careerShoes=(gameQuery.get('shoes')||'clasicas').trim().slice(0,20)||'clasicas';
+const careerRival1=(gameQuery.get('opp1')||'IA1').trim().slice(0,12)||'IA1';
+const careerRival2=(gameQuery.get('opp2')||'IA2').trim().slice(0,12)||'IA2';
+const quickRival1=(gameQuery.get('opp1')||'IA1').trim().slice(0,12)||'IA1';
+const quickRival2=(gameQuery.get('opp2')||'IA2').trim().slice(0,12)||'IA2';
+const quickRival3=(gameQuery.get('opp3')||'IA3').trim().slice(0,12)||'IA3';
 const W=1672,H=941,BASE_G=9.81,G=specialMode==='celestial'?8.50:BASE_G, canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),status=document.getElementById('status');
 const assets=window.PADEL_ASSETS||{human:{},robot:{}};
 const yellow=window.PADEL_YELLOW||{};
@@ -16,6 +26,96 @@ const a45YellowOld=window.PADEL_A45_YELLOW_OLD===true;
 const a48=window.PADEL_A48_SPRITES||{};
 const a48Enabled=window.PADEL_A48_ENABLED!==false;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),random=(a,b)=>a+(b-a)*Math.random(),hypot=Math.hypot;
+// A5.7 EXTERIOR TEST — the 10x20 court remains unchanged. Side glass is solid
+// except for the two real access openings around the net. Players may only
+// cross the side boundary through those openings, then run in the exterior strip.
+const COURT_X=5,NET_Z=10,DOOR_Z_MIN=8.35,DOOR_Z_MAX=11.65;
+const SIDE_GLASS_H=3.0,BACK_GLASS_H=4.0,OUTER_X=7.25,OUTER_Z_MIN=.25,OUTER_Z_MAX=19.75;
+const inDoorZ=z=>z>=DOOR_Z_MIN&&z<=DOOR_Z_MAX;
+const actorOutside=p=>Math.abs(p.x)>COURT_X+.03;
+const ballOutside=b=>!!b&&(Math.abs(b.x)>COURT_X+.03||b.z<0||b.z>20);
+// Visual centre limits for the white player while normal play remains inside the court.
+// They are intentionally slightly asymmetric to match the fixed broadcast perspective.
+const PLAYER_LEFT_X=-4.25,PLAYER_RIGHT_X=4.45,PLAYER_NEAR_Z_MIN=.45;
+function ballCanExitSide(b){
+ if(!b||phase!=='rally'||b.lastHit!==1||Math.abs(b.vx)<.001)return false;
+ const sx=b.vx<0?-COURT_X:COURT_X,t=(sx-b.x)/b.vx;
+ if(!(t>0&&t<1.4))return false;
+ const zAt=b.z+b.vz*t,hAt=b.h+b.vh*t-.5*G*t*t;
+ return inDoorZ(zAt)||hAt>SIDE_GLASS_H;
+}
+function exteriorAccessOpen(team){
+ if(!ball||phase!=='rally')return false;
+ if(ballOutside(ball))return true;
+ return team===0&&ballCanExitSide(ball);
+}
+function resolveActorMove(p,nx,nz,team){
+ const ox=p.x,oz=p.z;let blockedX=false,blockedZ=false;
+ nx=clamp(nx,-OUTER_X,OUTER_X);nz=clamp(nz,OUTER_Z_MIN,OUTER_Z_MAX);
+ // During normal play the white player stays visually inside the playable floor.
+ // Crossing toward the glass is only opened when an opponent ball is actually
+ // leaving / already outside, and only while aligned with a real access opening.
+ if(p===human&&!actorOutside(p)){
+  const access=exteriorAccessOpen(team),doorApproach=access&&(inDoorZ(oz)||inDoorZ(nz));
+  if(!doorApproach){nx=clamp(nx,PLAYER_LEFT_X,PLAYER_RIGHT_X);nz=Math.max(nz,PLAYER_NEAR_Z_MIN);}
+ }
+ // Long-side glass: crossing x=±5 is legal only through the access opening.
+ for(const sx of [-COURT_X,COURT_X]){
+  const crossed=(ox<sx&&nx>=sx)||(ox>sx&&nx<=sx);
+  if(!crossed)continue;
+  const den=nx-ox,t=Math.abs(den)<1e-8?0:(sx-ox)/den;
+  const zCross=oz+(nz-oz)*clamp(t,0,1);
+  const wasInside=Math.abs(ox)<COURT_X;
+  const throughDoor=inDoorZ(zCross);
+  const accessAllowed=p!==human||!wasInside||exteriorAccessOpen(team);
+  if(!throughDoor||!accessAllowed){
+   nx=sx+(wasInside?(sx>0?-.055:.055):(sx>0?.055:-.055));blockedX=true;
+  }
+ }
+ // Inside the court the net still separates the two teams. Outside the glass
+ // players can run alongside the net and reach the other side of the opening.
+ if(Math.abs(nx)<COURT_X-.02){
+  if(team===0&&nz>9.3){nz=9.3;blockedZ=true;}
+  if(team===1&&nz<10.7){nz=10.7;blockedZ=true;}
+ }
+ return{x:nx,z:nz,blockedX,blockedZ};
+}
+function exteriorRoute(p,tx,tz,team){
+ const pOut=actorOutside(p),tOut=Math.abs(tx)>COURT_X+.03;
+ if(pOut===tOut)return{x:tx,z:tz};
+ const side=tOut?(Math.sign(tx)||Math.sign(p.x)||1):(Math.sign(p.x)||Math.sign(tx)||1);
+ const doorZ=team===0?9.05:10.95;
+ // First line up with the door on the current side of the glass; once aligned,
+ // cross the opening. No path can cut through glass.
+ if(Math.abs(p.z-doorZ)>.34)return{x:side*(pOut?5.30:4.70),z:doorZ};
+ return{x:side*(tOut?5.42:4.58),z:doorZ};
+}
+function crossing(a,b,boundary){
+ if((a<boundary&&b>=boundary)||(a>boundary&&b<=boundary)){
+  const den=b-a;return Math.abs(den)<1e-8?0:(boundary-a)/den;
+ }
+ return null;
+}
+function ensureExteriorClearance(b,p,flight){
+ // A shot struck from outside must physically clear the enclosure unless its
+ // path is aligned with the door. We only raise the vertical component; x/z aim
+ // and all normal landing physics stay untouched.
+ if(Math.abs(p.x)>COURT_X+.03&&Math.abs(b.vx)>.001){
+  const sx=Math.sign(p.x)*COURT_X,t=(sx-b.x)/b.vx;
+  if(t>0&&t<flight){
+   const zAt=b.z+b.vz*t;
+   if(!inDoorZ(zAt)){
+    const need=(SIDE_GLASS_H+.16-b.h+.5*G*t*t)/t;
+    if(Number.isFinite(need))b.vh=Math.max(b.vh,need);
+   }
+  }
+ }
+ if((p.z<0||p.z>20)&&Math.abs(b.vz)>.001){
+  const sz=p.z<0?0:20,t=(sz-b.z)/b.vz;
+  if(t>0&&t<flight){const need=(BACK_GLASS_H+.16-b.h+.5*G*t*t)/t;if(Number.isFinite(need))b.vh=Math.max(b.vh,need);}
+ }
+}
+
 let phase='loading',paused=false,help=false,clock=0,last=0,server=0,scoreP=[0,0],games=[0,0],rally=0,pointDelay=0;
 let ball=null,serveT=0,serveBounceT=0,queued=null,charging=null,steer=null,alert='',alertT=0,contactMsgT=0;
 let hCool=0,rCool=0,robotServeTimer=0,robotThinking=0,robotCharge=0,boost=100,robotStamina=100,serveNumber=0,serveFaults=0;
@@ -25,6 +125,19 @@ let teamHits=[0,0],lastInterception='';
 let longestRally=0;
 let lastLateralMode='',lateralNormal=0,lateralPower=0,powerBannerT=0,showShotStats=false;
 const heldGlass=new Set();let glassComboUsed=false;
+// A5.10: G is a timed defensive stance, not an auto-return. The ball must
+// physically cross the raised-racket contact window while the stance is active.
+let tapiaGuard=null;
+// QA AUTO REAL: hidden F7 mode. The white player is driven by the same live
+// simulation (movement, contacts, physics and scoring), so a full Career match
+// can run unattended without faking points. State persists only to continue
+// the same tournament between its seven matches.
+const AUTO_REAL_STORE='padel-rally-auto-real-v1';
+function readAutoReal(){try{if(typeof localStorage==='undefined')return null;const v=JSON.parse(localStorage.getItem(AUTO_REAL_STORE)||'null');return v&&typeof v==='object'?v:null;}catch(_){return null;}}
+function saveAutoReal(enabled){try{if(typeof localStorage==='undefined')return;if(!enabled){localStorage.removeItem(AUTO_REAL_STORE);return;}localStorage.setItem(AUTO_REAL_STORE,JSON.stringify({enabled:true,tournament:careerTournament,format:matchFormat}));}catch(_){}}
+const savedAutoReal=readAutoReal();
+let autoReal=!!(careerMode&&savedAutoReal?.enabled&&Number(savedAutoReal.tournament)===careerTournament);
+let autoServeTimer=0,autoHumanAttempted=false;
 // Online: host owns all physics, rules and two rival AIs. Guest only sends input
 // and renders host snapshots. Offline uses the A4.6 team-aware partner AI.
 let netMode='offline',remoteActive=false,guestSnapshotSeq=-1,netHostPower=0,netRemotePower=0;
@@ -37,23 +150,25 @@ let audioEventSeq=0,lastRemoteAudioEvent=0;const audioEvents=[];
 // Lento .81, Normal 1.00, Rapido 1.02, Muy Rapido 1.06, Extremo 1.08.
 // Racket strokes, collision formulas, stamina rules and animation-distance cycles stay intact.
 const tempos=[{name:'LENTO',scale:.81,ballScale:.81},{name:'NORMAL',scale:1.00,ballScale:1.05},
- {name:'RÁPIDO',scale:1.02,ballScale:1.32},{name:'MUY RÁPIDO',scale:1.06,ballScale:1.452},
- {name:'EXTREMO',scale:1.08,ballScale:1.584}];
+ {name:'RÁPIDO',scale:1.02,ballScale:1.32},{name:'MUY RÁPIDO',scale:1.06,ballScale:1.45},
+ {name:'EXTREMO',scale:1.08,ballScale:1.584},{name:'TURBO',scale:1.08,ballScale:1.774},
+ {name:'INSANO',scale:1.08,ballScale:2.04}];
 const skillLevels=[
- {name:'FÁCIL',reaction:.50,speed:2.80,reach:1.02,miss:.40,aimError:1.30,low:.32,high:.63},
- {name:'MEDIO',reaction:.34,speed:3.58,reach:1.32,miss:.23,aimError:.80,low:.38,high:.72},
- {name:'DIFÍCIL',reaction:.20,speed:4.45,reach:1.63,miss:.10,aimError:.38,low:.44,high:.84},
- // Expert: harder mainly through earlier recognition and tactical shot placement.
- // Still has one attempt per incoming ball and can miss legitimately.
- {name:'EXPERTO',reaction:.155,speed:4.98,reach:1.69,miss:.06,aimError:.265,low:.49,high:.89}
+ {name:'FÁCIL',reaction:.50,speed:2.80,reach:1.00,miss:.40,aimError:1.30,low:.32,high:.63},
+ {name:'MEDIO',reaction:.34,speed:3.58,reach:1.02,miss:.23,aimError:.80,low:.38,high:.72},
+ {name:'DIFÍCIL',reaction:.20,speed:4.45,reach:1.04,miss:.10,aimError:.38,low:.44,high:.84},
+ // Expert is harder through recognition, movement and placement, not invisible racket reach.
+ {name:'EXPERTO',reaction:.155,speed:4.98,reach:1.06,miss:.06,aimError:.265,low:.49,high:.89}
 ];
+// AI movement speed is difficulty-dependent, but robot sprite cadence is not.
+const ROBOT_RUN_FPS=8;
 // Menu launcher: pass user selections to the exact same game engine.
 // Direct game and online iframe retain the original defaults.
 const menuQuery=gameQuery,fromMainMenu=menuQuery.get('fromMenu')==='1';
 function menuChoice(key,maximum,defaultValue){
  const v=menuQuery.get(key);return v!==null&&/^\d+$/.test(v)?clamp(Number(v),0,maximum):defaultValue;
 }
-let tempoIndex=fromMainMenu?menuChoice('tempo',4,1):1;
+let tempoIndex=fromMainMenu?menuChoice('tempo',6,1):1;
 let skillIndex=fromMainMenu?menuChoice('skill',3,1):1;
 let ambientOn=fromMainMenu?menuQuery.get('ambiente')!=='0':true;
 let sfxOn=fromMainMenu?menuQuery.get('efectos')!=='0':true;
@@ -104,14 +219,19 @@ function fx(id,{who=0,power=.55,shot='forehand'}={}){
 }
 function musicLoop(){resumeAmbience();}
 const keys=new Set(),lastArrow={dx:0,dz:0,t:-10};
-const human={id:'P1',team:0,x:-2.0,z:2.35,motion:'idle',previous:'idle',frameT:0,pose:0,moving:false,prevX:0,prevZ:0,vx:0,vz:0,cool:0,stridePhase:0,recoverT:0,savePoseT:0,saveFrame:0,visualFacing:'idle',visualPending:'',visualPendingT:0,visualIdleT:0,visualBlendT:0,visualFrom:null,visualExitT:0,jumpT:0,jumpDuration:.46};
-const partner={id:'ALIADO',team:0,x:2.0,z:4.0,motion:'idle',previous:'idle',frameT:0,pose:0,moving:false,dx:0,poseT:0,cool:0,stamina:100,thinking:0,charge:0,stridePhase:0,recoverT:0,splitStepT:0,splitArmed:true,visualSpeed:0,lean:0,visualFacing:'idle',visualPending:'',visualPendingT:0,visualIdleT:0,jumpT:0,jumpDuration:.42};
-const robot={id:'IA1',team:1,x:1.9,z:16.2,motion:'ready',frameT:0,pose:0,moving:false,dx:0,cool:0,thinking:0,charge:0,stamina:100};
-const robot2={id:'IA2',team:1,x:-1.9,z:16.2,motion:'ready',frameT:0,pose:0,moving:false,dx:0,cool:0,thinking:0,charge:0,stamina:100};
-const matchFormat=['1v1','2v2','2v1','1v2'].includes(requestedFormat)?requestedFormat:'2v2';
-const nearHasPartner=matchFormat==='2v2'||matchFormat==='2v1';
-const farHasRobot2=matchFormat==='2v2'||matchFormat==='1v2';
-const members=[[human,...(nearHasPartner?[partner]:[])],[robot,...(farHasRobot2?[robot2]:[])]];
+const human={id:careerMode?careerPlayerName:quickPlayerName,team:0,x:-2.0,z:2.35,motion:'idle',previous:'idle',frameT:0,pose:0,moving:false,prevX:0,prevZ:0,vx:0,vz:0,cool:0,stridePhase:0,recoverT:0,savePoseT:0,saveFrame:0,visualFacing:'idle',visualPending:'',visualPendingT:0,visualIdleT:0,visualBlendT:0,visualFrom:null,visualExitT:0,jumpT:0,jumpDuration:.46};
+const partner={id:careerMode?careerPartnerName:'ALIADO',team:0,x:2.0,z:4.0,motion:'idle',previous:'idle',frameT:0,pose:0,moving:false,dx:0,poseT:0,cool:0,stamina:100,thinking:0,charge:0,stridePhase:0,recoverT:0,splitStepT:0,splitArmed:true,visualSpeed:0,lean:0,visualFacing:'idle',visualPending:'',visualPendingT:0,visualIdleT:0,jumpT:0,jumpDuration:.42};
+// 3v3 experimental actors. They reuse the approved yellow/robot visuals and the
+// exact same ball/shot physics; only team composition and coverage are extended.
+const partner2={id:'ALIADO 2',team:0,x:0,z:4.2,motion:'idle',previous:'idle',frameT:0,pose:0,moving:false,dx:0,poseT:0,cool:0,stamina:100,thinking:0,charge:0,stridePhase:0,recoverT:0,splitStepT:0,splitArmed:true,visualSpeed:0,lean:0,visualFacing:'idle',visualPending:'',visualPendingT:0,visualIdleT:0,jumpT:0,jumpDuration:.42};
+const robot={id:careerMode?careerRival1:quickRival1,team:1,x:1.9,z:16.2,motion:'ready',frameT:0,pose:0,moving:false,dx:0,cool:0,thinking:0,charge:0,stamina:100};
+const robot2={id:careerMode?careerRival2:quickRival2,team:1,x:-1.9,z:16.2,motion:'ready',frameT:0,pose:0,moving:false,dx:0,cool:0,thinking:0,charge:0,stamina:100};
+const robot3={id:quickRival3,team:1,x:0,z:15.5,motion:'ready',frameT:0,pose:0,moving:false,dx:0,cool:0,thinking:0,charge:0,stamina:100};
+const matchFormat=['1v1','2v2','2v1','1v2','3v3'].includes(requestedFormat)?requestedFormat:'2v2';
+const is3v3=matchFormat==='3v3';
+const nearHasPartner=matchFormat==='2v2'||matchFormat==='2v1'||is3v3;
+const farHasRobot2=matchFormat==='2v2'||matchFormat==='1v2'||is3v3;
+const members=[[human,...(nearHasPartner?[partner]:[]),...(is3v3?[partner2]:[])],[robot,...(farHasRobot2?[robot2]:[]),...(is3v3?[robot3]:[])]];
 const activeActors=new Set([...members[0],...members[1]]);
 function servingActor(who=server){const team=members[who];const idx=who===0?nearServerMember:farServerMember;return team[Math.min(idx,team.length-1)]||team[0];}
 function teammates(who){return members[who];}
@@ -121,16 +241,43 @@ function load(path){if(images[path])return images[path];const im=new Image();req
 const courtAsset=menuQuery.get('court')||'assets/court_clean.png';load(courtAsset);for(const a of Object.values(assets.human))for(const s of a)load(s.src);for(const path of Object.values(assets.robot))load(path);for(const v of Object.values(yellow))load(v.src);if(a44Enabled)for(const v of Object.values(a44))load(v.src);
 if(a45Enabled)for(const seq of Object.values(a45))for(const v of seq)load(v.src);
 if(a48Enabled)for(const seq of Object.values(a48))for(const v of seq)load(v.src);
-function message(t,secs=1.1){alert=t;alertT=secs;status.textContent=t;}
-const label={forehand:'DERECHA',backhand:'REVÉS',lob:'GLOBO',smash:'REMATE',glass:'CONTRAPARED',drop:'DEJADA'};
+function message(t,secs=1.1){const important=/^(PUNTO|JUEGO|DOBLE PIQUE|DOBLE FALTA|PRIMER SAQUE|FALTA DE SAQUE|FUERA|RED|VIDRIO|PIQUE EN CAMPO|LA IA FALLÓ|COMPAÑERO FALLÓ|PARTIDO GANADO|PARTIDO PERDIDO)/.test(String(t));alert=t;alertT=Math.max(secs,important?2.45:secs);status.textContent=t;}
+const label={forehand:'DERECHA',backhand:'REVÉS',lob:'GLOBO',smash:'REMATE',glass:'CONTRAPARED',drop:'DEJADA',tapia:'TAPIA',exit_x3:'X3',exit_x4:'X4'};
 function Y(z){const v=[[0,811],[3,659],[10,487],[17,393],[20,353]];z=clamp(z,0,20);for(let i=1;i<v.length;i++)if(z<=v[i][0]){const f=(z-v[i-1][0])/(v[i][0]-v[i-1][0]);return v[i-1][1]+(v[i][1]-v[i-1][1])*f;}return 353;}
 function halfWidth(z){const v=[[0,777],[3,619],[10,402],[17,272],[20,258]];z=clamp(z,0,20);for(let i=1;i<v.length;i++)if(z<=v[i][0]){const f=(z-v[i-1][0])/(v[i][0]-v[i-1][0]);return v[i-1][1]+(v[i][1]-v[i-1][1])*f;}return 258;}
 function project(x,z,h=0){return{x:824+(x/5)*halfWidth(z),y:Y(z)-h*(82/(1+z*.075)),scale:1/(1+z*.075)};}
+function readCareerStartEnergy(){
+ if(!careerMode||typeof localStorage==='undefined')return{human:100,partner:100};
+ try{const raw=JSON.parse(localStorage.getItem('padel-rally-career-v1')||'null'),e=raw?.energy?.[careerTournament];return{human:clamp(Number(e?.human)||100,35,100),partner:clamp(Number(e?.partner)||100,35,100)};}catch(_){return{human:100,partner:100};}
+}
+let careerEnergyStart=readCareerStartEnergy();
 function resetPositions(){
  const side=pointInGame%2===0?1:-1;
- for(const p of [human,partner,robot,robot2]){p.pose=0;p.frameT=0;p.moving=false;p.dx=0;p.cool=0;p.thinking=0;p.charge=0;p.ivx=0;p.ivz=0;p.motion=p.team===0?'idle':'ready';}
+ for(const p of [human,partner,partner2,robot,robot2,robot3]){p.pose=0;p.frameT=0;p.moving=false;p.dx=0;p.cool=0;p.thinking=0;p.charge=0;p.ivx=0;p.ivz=0;p.motion=p.team===0?'idle':'ready';}
  const ns=servingActor(0),fs=servingActor(1);
  const nf=members[0].find(x=>x!==ns)||null,ff=members[1].find(x=>x!==fs)||null;
+ if(is3v3){
+  // 3v3 uses a staggered 2+1 formation instead of three players in one line.
+  // White + first ally behave as the normal doubles pair; the extra ally protects
+  // the deep middle. The robots mirror the same idea: two forward, one deep.
+  const nearFront=[human,partner],farFront=[robot,robot2];
+  nearFront[0].x=-2.25;nearFront[0].z=4.95;
+  nearFront[1].x= 2.25;nearFront[1].z=4.95;
+  partner2.x=0;partner2.z=1.75;
+  farFront[0].x=-2.25;farFront[0].z=14.85;
+  farFront[1].x= 2.25;farFront[1].z=14.85;
+  robot3.x=0;robot3.z=18.05;
+  if(server===0){
+   ns.x=side*2.25;ns.z=2.35;
+   // Keep the non-serving member of the doubles pair on the opposite lane.
+   const otherFront=nearFront.find(p=>p!==ns);
+   if(otherFront){otherFront.x=-side*2.25;otherFront.z=4.95;}
+  }else{
+   fs.x=-side*2.15;fs.z=17.8;
+   const otherFront=farFront.find(p=>p!==fs);
+   if(otherFront){otherFront.x=side*2.25;otherFront.z=14.85;}
+  }
+ }else
  if(server===0){
   ns.x=side*2.25;ns.z=2.35;
   if(nf){nf.x=-side*2.3;nf.z=4.45;}
@@ -143,10 +290,11 @@ function resetPositions(){
   if(ff){ff.x=side*2.1;ff.z=15.55;}
  }
  partnerLane=nearHasPartner?(partner.x>=0?1:-1):0;
- human.vx=0;human.vz=0;human.stridePhase=0;human.a45WasMoving=false;human.visualExitT=0;human.jumpT=0;human.recoverT=0;human.savePoseT=0;human.saveFrame=0;human.visualFacing='idle';human.visualPending='';human.visualPendingT=0;human.visualIdleT=0;human.visualBlendT=0;human.visualFrom=null;partner.stridePhase=0;partner.jumpT=0;partner.recoverT=0;partner.splitStepT=0;partner.splitArmed=true;partner.visualSpeed=0;partner.lean=0;partner.visualFacing='idle';partner.visualPending='';partner.visualPendingT=0;partner.visualIdleT=0;
- nearChaseBall=null;nearChaseOwner=null;nearChaseLockT=0;ball=null;queued=null;charging=null;steer=null;hCool=0;rCool=0;robotServeTimer=0;robotThinking=0;robotCharge=0;contactMsgT=0;robotAttempted=false;allyAttempted=false;allyServeTimer=0;
+ human.vx=0;human.vz=0;human.stridePhase=0;human.a45WasMoving=false;human.visualExitT=0;human.jumpT=0;human.recoverT=0;human.savePoseT=0;human.saveFrame=0;human.visualFacing='idle';human.visualPending='';human.visualPendingT=0;human.visualIdleT=0;human.visualBlendT=0;human.visualFrom=null;
+ for(const p of [partner,partner2]){p.stridePhase=0;p.jumpT=0;p.recoverT=0;p.splitStepT=0;p.splitArmed=true;p.visualSpeed=0;p.lean=0;p.visualFacing='idle';p.visualPending='';p.visualPendingT=0;p.visualIdleT=0;}
+ nearChaseBall=null;nearChaseOwner=null;nearChaseLockT=0;ball=null;queued=null;charging=null;steer=null;tapiaGuard=null;human.tapiaReadyT=0;hCool=0;rCool=0;robotServeTimer=0;robotThinking=0;robotCharge=0;contactMsgT=0;robotAttempted=false;allyAttempted=false;allyServeTimer=0;autoServeTimer=0;autoHumanAttempted=false;
 }
-function newMatch(){robotAimWhite=0;robotAimYellow=0;lastRobotTarget='';ensureAudio();server=0;nearServerMember=0;farServerMember=0;pointInGame=0;scoreP=[0,0];games=[0,0];rally=0;longestRally=0;serveFaults=0;robotAttempted=false;allyAttempted=false;boost=100;robotStamina=100;paused=false;help=false;phase='serveReady';resetPositions();message((matchFormat==='2v2'?'DOBLES':matchFormat.toUpperCase())+' · TU SAQUE · MANTENÉ X O Z Y SOLTÁ',2);resumeAmbience();}
+function newMatch(){robotAimWhite=0;robotAimYellow=0;lastRobotTarget='';ensureAudio();server=0;nearServerMember=0;farServerMember=0;pointInGame=0;scoreP=[0,0];games=[0,0];rally=0;longestRally=0;serveFaults=0;robotAttempted=false;allyAttempted=false;careerEnergyStart=readCareerStartEnergy();boost=careerMode?careerEnergyStart.human:100;partner.stamina=careerMode?careerEnergyStart.partner:100;partner2.stamina=100;robot.stamina=100;robot2.stamina=100;robot3.stamina=100;robotStamina=100;paused=false;help=false;phase='serveReady';resetPositions();message((matchFormat==='2v2'?'DOBLES':matchFormat==='3v3'?'3 VS 3 · PRUEBA':matchFormat.toUpperCase())+' · TU SAQUE · MANTENÉ X O Z Y SOLTÁ',2);resumeAmbience();}
 function start(){ensureAudio();if(phase==='loading')return;if(phase==='intro'){newMatch();return;}help=false;paused=false;message('JUGANDO',.5);}
 function pause(){if(phase==='loading'||phase==='intro')return;help=false;paused=!paused;resumeAmbience();message(paused?'PAUSA':'JUGANDO',.7);}
 function commands(){if(phase==='intro'){newMatch();}help=!help;paused=help;resumeAmbience();message(help?'COMANDOS':'JUGANDO',.3);}
@@ -158,8 +306,8 @@ if(failedServe&&serveFaults===1)reason='DOBLE FALTA';
 longestRally=Math.max(longestRally,rally);fx(reason==='RED'?'red':'punto');serveFaults=0;phase='pointEnd';pointDelay=1.45;ball=null;queued=null;charging=null;steer=null;pointInGame++;scoreP[winner]++;if(scoreP[winner]>=4&&scoreP[winner]-scoreP[1-winner]>=2){games[winner]++;scoreP=[0,0];pointInGame=0;
  // Rotate the player who HAS JUST served, not the next server. The order is
  // white -> robot 1 -> yellow -> robot 2 (repeat within this set).
- if(server===0&&members[0].length>1)nearServerMember=1-nearServerMember;
- else if(server===1&&members[1].length>1)farServerMember=1-farServerMember;
+ if(server===0&&members[0].length>1)nearServerMember=(nearServerMember+1)%members[0].length;
+ else if(server===1&&members[1].length>1)farServerMember=(farServerMember+1)%members[1].length;
  server=1-server;
  if(careerMode&&games[winner]>=2){finishCareerMatch(winner);return;}
  message((winner?'JUEGO IA':'JUEGO HUMANOS')+' · '+reason,1.8);}else message((winner?'PUNTO IA':'PUNTO HUMANO')+' · '+reason,1.5);}
@@ -167,25 +315,29 @@ function finishCareerMatch(winner){
  if(!careerMode||window.__careerFinishing)return;window.__careerFinishing=true;phase='pointEnd';pointDelay=99;ball=null;queued=null;charging=null;steer=null;
  const won=winner===0;message(won?'PARTIDO GANADO':'PARTIDO PERDIDO',2);
  try{
-  const key='padel-rally-career-v1',base={won:[],rounds:{},formats:{}},saved=JSON.parse(localStorage.getItem(key)||'null'),p=saved&&typeof saved==='object'?{...base,...saved}:base;
-  p.won=Array.isArray(p.won)?p.won:[];p.rounds=p.rounds&&typeof p.rounds==='object'?p.rounds:{};p.formats=p.formats&&typeof p.formats==='object'?p.formats:{};
+  const key='padel-rally-career-v1',base={won:[],rounds:{},formats:{},playerName:careerPlayerName,partnerName:careerPartnerName,racket:careerRacket,shoes:careerShoes,energy:{}},saved=JSON.parse(localStorage.getItem(key)||'null'),p=saved&&typeof saved==='object'?{...base,...saved}:base;
+  p.won=Array.isArray(p.won)?p.won:[];p.rounds=p.rounds&&typeof p.rounds==='object'?p.rounds:{};p.formats=p.formats&&typeof p.formats==='object'?p.formats:{};p.energy=p.energy&&typeof p.energy==='object'?p.energy:{};
   if(won){
-   if(careerRound>=7){if(!p.won.includes(careerTournament))p.won.push(careerTournament);p.rounds[careerTournament]=1;}
-   else p.rounds[careerTournament]=careerRound+1;
-  }else p.rounds[careerTournament]=careerRound;
+   if(careerRound>=7){if(!p.won.includes(careerTournament))p.won.push(careerTournament);p.rounds[careerTournament]=1;p.energy[careerTournament]={human:100,partner:100};}
+   else {p.rounds[careerTournament]=careerRound+1;p.energy[careerTournament]={human:clamp(boost+16,35,100),partner:clamp((partner.stamina||100)+16,35,100)};}
+  }else {p.rounds[careerTournament]=careerRound;p.energy[careerTournament]={human:clamp(boost+20,35,100),partner:clamp((partner.stamina||100)+20,35,100)};}
   if(!p.formats[careerTournament])p.formats[careerTournament]=matchFormat;
+  if(!p.playerName)p.playerName=careerPlayerName;
+  if(!p.partnerName)p.partnerName=careerPartnerName;
+  if(!p.racket)p.racket=careerRacket;
+  if(!p.shoes)p.shoes=careerShoes;
   localStorage.setItem(key,JSON.stringify(p));
  }catch(_){}
  setTimeout(()=>{location.href='carrera.html';},1800);
 }
-function makeBall(x,z,h,vx=0,vz=0,vh=0,hit=0){return{x,z,h,vx,vz,vh,lastHit:hit,bounces:0,wallOK:false,wallCount:0,age:0,serveFlight:false,serveSide:0,bank:false,bankRoute:null,bankStage:0,trail:[],netCrossed:false,serveReceiver:null};}
+function makeBall(x,z,h,vx=0,vz=0,vh=0,hit=0){return{x,z,h,vx,vz,vh,lastHit:hit,bounces:0,wallOK:false,wallCount:0,age:0,serveFlight:false,serveSide:0,bank:false,bankRoute:null,bankStage:0,trail:[],netCrossed:false,serveReceiver:null,externalReturn:false,exitTest:null};}
 function arrows(){return{dx:(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0),dz:(keys.has('ArrowUp')?1:0)-(keys.has('ArrowDown')?1:0)};}
 function aim(){let d=arrows();if(d.dx===0&&d.dz===0&&clock-lastArrow.t<.20)d={dx:lastArrow.dx,dz:lastArrow.dz};return d;}
 function target(who,shot,aimDir){const near=who===0;
 // Pick an actual intended receiver for each robot RETURN. A4.8 uses 55/45 as a
 // probability per shot, not a forced sequence; teammate interceptions are
 // decided separately. Both robots share this policy (all skill settings).
-const selected=near?null:(nearHasPartner?(Math.random()<.55?human:partner):human);
+const selected=near?null:(members[0].length===1?human:(Math.random()<.45?human:members[0][1+Math.floor(Math.random()*(members[0].length-1))]));
 if(selected){lastRobotTarget=selected.id;if(selected===human)robotAimWhite++;else robotAimYellow++;}
 let x=near?aimDir.dx*3.55:clamp(selected.x+random(-1.08,1.08),-4.05,4.05);
 let z=near?(aimDir.dz>0?18.0:aimDir.dz<0?12.5:15.5):random(2.5,7.6);
@@ -208,17 +360,41 @@ if(who===1&&p.z<17){p.z=17.8;}
 phase='serveDrop';serveT=0;serveBounceT=0;serveNumber++;const dir=who?-1:1,side=(pointInGame%2===0?1:-1)*(who?-1:1);
 ball=makeBall(p.x+0.12,p.z+dir*.18,.85,0,0,-.12,who);ball.serveData={who,power,aim:aimDir,side,x:p.x,z:p.z,actor:p.id,visualShot:visualShot==='backhand'?'backhand':'forehand'};human.motion=who===0?'idle':human.motion;queued=null;
 message('SAQUE · PIQUE Y GOLPE POR ABAJO',1.15);return true;}
+function serveFaultRisk(who,power){
+ let risk=.012;
+ if(power<.28)risk+=( .28-power)*2.5;
+ if(power>.82)risk+=(power-.82)*3.0;
+ if(serveFaults===1)risk*=.42;
+ if(who===1)risk*=[1.05,.80,.58,.42][skillIndex]||.8;
+ else if(servingActor(0)!==human)risk*=.72;
+ return clamp(risk,0,.72);
+}
+function aiServePower(){
+ if(serveFaults===1)return random(.42,.67);
+ const ranges=[[.34,.78],[.40,.83],[.46,.88],[.50,.91]],r=ranges[skillIndex]||ranges[1];return random(r[0],r[1]);
+}
 function finishServe(){if(!ball||phase!=='serveDrop')return;const b=ball,d=b.serveData,who=d.who,dir=who?-1:1;
 // Fixed release position: a serve cannot teleport when the player moves.
 b.x=d.x;b.z=d.z+dir*.36;b.h=.55;
-const shotX=clamp(-d.side*(2.4+(d.aim.dx===-d.side?.5:0)), -3.4,3.4);
-const landing={x:shotX,z:who?5.45:14.55},flight=clamp(1.47-d.power*.26,1.15,1.48);
+let shotX=clamp(-d.side*(2.4+(d.aim.dx===-d.side?.5:0)), -3.4,3.4);
+let landingZ=who?5.45:14.55;
+const fault=Math.random()<serveFaultRisk(who,d.power);
+if(fault){
+ if(d.power<.28)landingZ=who?10.45:9.55; // demasiado corto: pica del lado del sacador
+ else if(d.power>.82)landingZ=who?2.45:17.55; // demasiado largo
+ else shotX=-shotX; // error lateral: cuadro equivocado
+}else{
+ const precision=who===1?[.24,.18,.12,.09][skillIndex]:(servingActor(0)===human?.13:.17);
+ shotX=clamp(shotX+random(-precision,precision),-3.6,3.6);
+ landingZ+=random(-precision*.65,precision*.65);
+}
+const landing={x:shotX,z:landingZ},flight=clamp(1.50-d.power*.31,1.12,1.50);
 ballistic(b,landing,flight);
 // On an opponent's serve, reserve the diagonal receiving court for its receiver.
 // The AI teammate does not poach the designated player's serve.
-b.serveReceiver=who===1?(nearHasPartner?(Math.abs(human.x-landing.x)<=Math.abs(partner.x-landing.x)?human.id:partner.id):human.id):null;
+b.serveReceiver=who===1?members[0].reduce((best,p)=>Math.abs(p.x-landing.x)<Math.abs(best.x-landing.x)?p:best,members[0][0]).id:null;
 b.serveFlight=true;b.serveSide=d.side;b.lastVisualServeShot=d.visualShot||'forehand';b.serveData=null;b.bounces=0;b.lastHit=who;b.wallOK=false;b.age=0;b.netCrossed=false;b.trail=[];
-phase='rally';rally=1;robotAttempted=false;allyAttempted=false;
+phase='rally';rally=1;robotAttempted=false;allyAttempted=false;autoHumanAttempted=false;
 fx('pala',{who,power:d.power,shot:'forehand'});
 const serverActor=members[who].find(p=>p.id===d.actor)||servingActor(who);
 serverActor.motion='forehand';serverActor.pose=.42;serverActor.frameT=0;serverActor.cool=.35;
@@ -228,10 +404,28 @@ message('SAQUE EJECUTADO',.5);}
 function contactPossible(who,shot,actor=null){if(!ball||phase!=='rally'||ball.lastHit===who)return false;const p=actor||(who?robot:human);
 // A serve must first bounce in the correct service box: no volleying the serve.
 if(ball.serveFlight&&ball.bounces===0)return false;
-const dx=ball.x-p.x,dz=ball.z-p.z;const r=who?skillLevels[skillIndex].reach:1.88;
-if(Math.abs(dx)>r||Math.abs(dz)>(who?skillLevels[skillIndex].reach:1.85)||ball.h<.13||ball.h>2.62||p.cool>0||(p===human?hCool:0)>0)return false;
+const dx=ball.x-p.x,dz=ball.z-p.z;
+const tapia=who===0&&p===human&&shot==='tapia';
+const exitShot=who===0&&p===human&&(shot==='exit_x3'||shot==='exit_x4');
+// Tapia: a deliberately small raised-racket window. G no longer gives the
+// player a giant invisible ellipse. The racket is treated as being above and
+// slightly behind the body while the player is turned away from the net.
+if(tapia){
+ if(!tapiaGuard||clock<tapiaGuard.activeFrom||clock>tapiaGuard.until)return false;
+ const tdx=dx,tdz=dz-.22;
+ const tapiaNorm=(tdx*tdx)/(1.12*1.12)+(tdz*tdz)/(.96*.96);
+ if(tapiaNorm>1||ball.h<1.28||ball.h>3.05||p.cool>0||hCool>0)return false;
+ return true;
+}
+// E uses essentially the normal physical reach. Difficulty / special-shot
+// selection must never create a magical two-metre contact.
+const baseReach=who?skillLevels[skillIndex].reach:1.88;
+const rx=exitShot?1.90:baseReach,rz=exitShot?1.88:(who?skillLevels[skillIndex].reach:1.85);
+const reachNorm=(dx*dx)/(rx*rx)+(dz*dz)/(rz*rz);
+const maxH=exitShot?2.85:2.62;
+if(reachNorm>1||ball.h<.13||ball.h>maxH||p.cool>0||(p===human?hCool:0)>0)return false;
 if(shot==='smash'&&ball.h<1.32)return false;return true;}
-function playHit(who,shot,power,bank=false,bankRoute='rear',actor=null){const p=actor||(who?robot:human);if(!contactPossible(who,shot,p))return false;const b=ball;
+function playHit(who,shot,power,bank=false,bankRoute='rear',actor=null,directionOverride=null){const p=actor||(who?robot:human);if(!contactPossible(who,shot,p))return false;const b=ball;
 if(bank){
   const rear=bankRoute.startsWith('rear'),side=bankRoute==='left'||bankRoute==='right';
   const valid=who===0&&b.h<=1.85&&(rear?p.z<=5.3&&b.z<=5.75:side&&p.z<=7.7&&b.z<=8.0);
@@ -239,9 +433,9 @@ if(bank){
  }
 const dx=b.x-p.x,dz=b.z-p.z,shotSide=shot==='forehand'?dx>=-.1:shot==='backhand'?dx<=.1:true;
 const positioned=clamp(1-Math.max(0,hypot(dx,dz)-.5)*.17,.68,1),quality=(shotSide?1:.78)*positioned;
-const powerC=clamp(power,.08,1),direction=who===0?(p===human?aim():remoteActive?remoteAim():{dx:robot.x+robot2.x>=0?-1:1,dz:1}):{dx:0,dz:0};
+const powerC=clamp(power,.08,1),direction=who===0?(p===human?(directionOverride|| (autoReal?autoHumanAim():aim())):remoteActive?remoteAim():{dx:robot.x+robot2.x>=0?-1:1,dz:1}):{dx:0,dz:0};
 const landing=target(who,shot,direction);
- if(who||(p===partner&&!remoteActive)){const err=who?skillLevels[skillIndex].aimError:.56;landing.x+=random(-err,err);landing.z+=random(-err,err);}
+ if(who||(p.team===0&&p!==human&&!remoteActive)){const err=who?skillLevels[skillIndex].aimError:.56;landing.x+=random(-err,err);landing.z+=random(-err,err);}
 // DEJADA: only effective from near the net. Very short, deliberately soft trajectory.
 // Same collision/net physics as other strokes: it may hit the tape and fail.
 if(shot==='drop'){
@@ -251,17 +445,57 @@ if(shot==='drop'){
   landing.z=who===0?random(11.15,12.15):random(7.85,8.85);
 }
 
-if(!bank){const errorScale=(1-quality)*1.15+Math.max(0,powerC-.86)*5.4;
- landing.x+=random(-.32,.32)*errorScale;landing.z+=(who? -1:1)*Math.max(0,powerC-.9)*9;
- let flight=shot==='lob'?2.22-powerC*.30:shot==='smash'?1.15-powerC*.42:1.79-powerC*.62;
- flight=clamp(flight/(.7+.3*quality),.74,2.6);
- b.x=p.x+dx*.16;b.z=p.z+(who?-.48:.48);b.h=clamp(b.h,shot==='smash'?1.35:.52,2.5);
- if(shot==='drop'){
-  const distance=Math.abs(landing.z-b.z);
-  flight=clamp(distance/(5.5+powerC*1.4),.72,1.3);
-  b.h=clamp(b.h,.75,1.10);
+if(!bank){
+ const exitShot=who===0&&p===human&&(shot==='exit_x3'||shot==='exit_x4');
+ const tapia=who===0&&p===human&&shot==='tapia';
+ // Any real contact that is not the original E attempt cancels its pending
+ // exit state. This prevents a later opponent return from being misread as
+ // the old X3/X4 and awarding the point to the human.
+ if(!exitShot)b.exitTest=null;
+ let flight;
+ b.x=p.x+dx*.16;b.z=p.z+(who?-.48:.48);
+ if(exitShot){
+  // A5.10: E means INTENTAR una salida, never guarantee it. Contact quality is
+  // deterministic: centred racket contact + useful ball height + being farther
+  // forward make the post-bounce kick stronger. A mediocre attempt simply
+  // stays in play or hits the enclosure under normal physics.
+  const side=shot==='exit_x3'?(Math.sign(direction.dx)||Math.sign(b.x)||1):0;
+  const contactNorm=Math.sqrt((dx*dx)/(1.90*1.90)+(dz*dz)/(1.88*1.88));
+  const centreQ=clamp(1-contactNorm,0,1);
+  const idealH=shot==='exit_x3'?1.62:1.82;
+  const heightQ=clamp(1-Math.abs(b.h-idealH)/1.45,0,1);
+  const courtQ=clamp((p.z-2.0)/6.2,0,1);
+  const exitQ=clamp(.18+centreQ*.46+heightQ*.24+courtQ*.12,.12,1);
+  if(shot==='exit_x3'){
+   landing.x=side*(3.15+.42*exitQ);landing.z=15.25+.55*exitQ;flight=1.08-.08*exitQ;b.h=clamp(b.h,.62,1.95);
+   b.exitTest={mode:'x3',side,quality:exitQ,launched:false,cleared:false,winT:0};
+  }else{
+   landing.x=clamp(direction.dx*1.10,-1.55,1.55);landing.z=16.25+.48*exitQ;flight=1.10-.08*exitQ;b.h=clamp(b.h,.70,2.05);
+   b.exitTest={mode:'x4',side:Math.sign(direction.dx)||0,quality:exitQ,launched:false,cleared:false,winT:0};
+  }
+  ballistic(b,landing,flight);
+ }else if(tapia){
+  // Emergency block: redirect the incoming pace instead of manufacturing a
+  // fixed-speed shot. Slow lobs therefore come back softly; a correctly timed
+  // block against a missile can still produce a fast, spectacular return.
+  const incomingSpeed=hypot(b.vx,b.vz);
+  landing.x=clamp(p.x*.12+direction.dx*2.75,-3.85,3.85);
+  landing.z=clamp(15.0+(direction.dz>0?1.8:direction.dz<0?-1.3:0),12.6,18.1);
+  flight=clamp(1.72-incomingSpeed*.030,1.00,1.62);b.h=clamp(b.h,1.10,2.75);ballistic(b,landing,flight);
+  tapiaGuard=null;human.tapiaReadyT=0;
+ }else{
+  const errorScale=(1-quality)*1.15+Math.max(0,powerC-.86)*5.4;
+  landing.x+=random(-.32,.32)*errorScale;landing.z+=(who? -1:1)*Math.max(0,powerC-.9)*9;
+  flight=shot==='lob'?2.22-powerC*.30:shot==='smash'?1.15-powerC*.42:1.79-powerC*.62;
+  flight=clamp(flight/(.7+.3*quality),.74,2.6);
+  b.h=clamp(b.h,shot==='smash'?1.35:.52,2.5);
+  if(shot==='drop'){
+   const distance=Math.abs(landing.z-b.z);
+   flight=clamp(distance/(5.5+powerC*1.4),.72,1.3);
+   b.h=clamp(b.h,.75,1.10);
+  }
+  ballistic(b,landing,flight);ensureExteriorClearance(b,p,flight);
  }
- ballistic(b,landing,flight);
 }else{
   // Lateral contra-pared: each VALID shot has independent P(power shot)=0.5.
   // A normal lateral loses pace; the special keeps the deliberately spectacular launch.
@@ -295,9 +529,10 @@ if(!bank){const errorScale=(1-quality)*1.15+Math.max(0,powerC-.86)*5.4;
   if(lateral)message(powerShot?'POWER SHOT · LATERAL':'CONTRAPARED LATERAL',.8);
  }
  nearChaseBall=null;nearChaseOwner=null;nearChaseLockT=0;
- b.serveReceiver=null;b.lastHit=who;b.lastActor=p.id;if(who===0)robotAttempted=false;else allyAttempted=false;b.bounces=0;b.wallCount=0;b.age=0;b.netCrossed=false;b.serveFlight=false;b.trail=[];
- if(p===human){human.visualBankRoute=bank?bankRoute:null;human.motion=bank?'glass':shot==='lob'||shot==='drop'?'forehand':shot;human.pose=bank?.55:.48;human.frameT=0;hCool=.31;human.cool=.31;
-  if(!bank&&shot==='smash'){human.jumpDuration=.46;human.jumpT=human.jumpDuration;human.visualExitT=0;}
+ b.externalReturn=actorOutside(p);
+ b.serveReceiver=null;b.lastHit=who;b.lastActor=p.id;if(who===0)robotAttempted=false;else {allyAttempted=false;autoHumanAttempted=false;}b.bounces=0;b.wallCount=0;b.age=0;b.netCrossed=false;b.serveFlight=false;b.trail=[];
+ if(p===human){human.visualBankRoute=bank?bankRoute:null;human.motion=bank?'glass':shot==='lob'||shot==='drop'?'forehand':shot==='tapia'?'backhand':shot==='exit_x3'||shot==='exit_x4'?'smash':shot;human.pose=bank?.55:shot==='tapia'?.62:.48;human.frameT=0;hCool=.31;human.cool=.31;
+  if(!bank&&(shot==='smash'||shot==='exit_x3'||shot==='exit_x4')){human.jumpDuration=.46;human.jumpT=human.jumpDuration;human.visualExitT=0;}
   // Visual-only desperate reach: only after a VALID contact near the reach boundary.
   // No extra hit window, auto-save, ball boost or AI advantage.
   const stretch=hypot(dx,dz);const urgent=!bank&&shot!=='smash'&&stretch>=1.37;
@@ -305,19 +540,27 @@ if(!bank){const errorScale=(1-quality)*1.15+Math.max(0,powerC-.86)*5.4;
   human.saveFrame=shot==='backhand'?6:5;
   human.recoverT=0;
   steer=bank?null:{ref:b,until:clock+.13,vx:b.vx,vz:b.vz,base:direction};
-  if(!bank||bankRoute==='rear')message((bank?({'rear':'FONDO','left':'LATERAL IZQ','right':'LATERAL DER','rear_left':'FONDO → IZQ','rear_right':'FONDO → DER'}[bankRoute]||'CONTRAPARED'):label[shot])+' · '+Math.round(powerC*100)+'%',.68);
+  if(!bank||bankRoute==='rear'){
+   if(shot==='tapia')message('TAPIA · BLOQUEO DE ESPALDAS',.95);
+   else if(shot==='exit_x3')message('REMATE DE SALIDA · X3',.95);
+   else if(shot==='exit_x4')message('REMATE DE SALIDA · X4',.95);
+   else message((bank?({'rear':'FONDO','left':'LATERAL IZQ','right':'LATERAL DER','rear_left':'FONDO → IZQ','rear_right':'FONDO → DER'}[bankRoute]||'CONTRAPARED'):label[shot])+' · '+Math.round(powerC*100)+'%',.68);
+  }
  }else{
-  p.motion=p===partner?(bank?'glass':shot==='smash'?'smash':shot==='backhand'?'backhand':'forehand'):(shot==='backhand'?'backhand':'forehand');p.pose=.42;p.cool=.42;p.frameT=0;
+  const nearAI=p.team===0;
+  p.motion=nearAI?(bank?'glass':shot==='smash'?'smash':shot==='backhand'?'backhand':'forehand'):(shot==='backhand'?'backhand':'forehand');p.pose=.42;p.cool=.42;p.frameT=0;
   p.charge=powerC;
-  if(p===partner&&!bank&&shot==='smash'){p.jumpDuration=.42;p.jumpT=p.jumpDuration;}
+  if(nearAI&&!bank&&shot==='smash'){p.jumpDuration=.42;p.jumpT=p.jumpDuration;}
   if(p.team===1){robotThinking=0;robotCharge=powerC;}else {message('COMPAÑERO DEVUELVE · '+label[shot],.55);}
  }
  fx('pala',{who,power:powerC,shot});if(shot==='smash'&&powerC>.72&&Math.random()<.28)fx('reaccion',{who,power:powerC});rally++;return true;}
-function queueShot(shot,power){if(phase!=='rally'||!ball||ball.lastHit===0)return;
-queued={shot,power,expires:clock+1.48};attemptQueued();}
+function queueShot(shot,power,shotAim=null){if(phase!=='rally'||!ball||ball.lastHit===0)return;
+tapiaGuard=null;human.tapiaReadyT=0;queued={shot,power,aim:shotAim?{dx:shotAim.dx||0,dz:shotAim.dz||0}:null,expires:clock+1.48};attemptQueued();}
 function attemptQueued(){if(!queued||phase!=='rally'||!ball||ball.lastHit===0)return;
-if(playHit(0,queued.shot,queued.power)){queued=null;return;}
-if(clock>queued.expires){queued=null;if(contactMsgT<=0){fx('fallo');message('GOLPE FUERA DE ALCANCE',.55);contactMsgT=.9;}}}
+if(queued.activeFrom&&clock<queued.activeFrom)return;
+const attemptedShot=queued.shot;
+if(playHit(0,queued.shot,queued.power,false,'rear',human,queued.aim)){queued=null;return;}
+if(clock>queued.expires){queued=null;if(attemptedShot==='tapia'){tapiaGuard=null;human.tapiaReadyT=0;}if(contactMsgT<=0){fx('fallo');message(attemptedShot==='tapia'?'TAPIA · SIN CONTACTO':attemptedShot==='exit_x3'||attemptedShot==='exit_x4'?'REMATE DE SALIDA · NO LLEGASTE':'GOLPE FUERA DE ALCANCE',.62);contactMsgT=.9;}}}
 function specialGlass(route){
  const labels={rear:'FONDO',left:'LATERAL IZQ',right:'LATERAL DER',rear_left:'FONDO → IZQUIERDA',rear_right:'FONDO → DERECHA'};
  if(phase!=='rally'||!ball||ball.lastHit===0){message('CONTRAPARED: ESPERÁ LA PELOTA',.75);return;}
@@ -406,13 +649,13 @@ function stepRemotePartner(dt){
  const b=remoteButtons,dx=Number(!!b.right)-Number(!!b.left),dz=Number(!!b.up)-Number(!!b.down),n=hypot(dx,dz);
  const sprint=b.sprint&&partner.stamina>7,speed=(sprint?7.05:5.06)*(.76+.24*clamp(partner.stamina/25,0,1));
  const step=n?Math.min(speed*dt,999)/n:0;
- partner.x=clamp(partner.x+dx*step,-4.5,4.5);partner.z=clamp(partner.z+dz*step,.45,9.3);
+ {const mv=resolveActorMove(partner,partner.x+dx*step,partner.z+dz*step,0);partner.x=mv.x;partner.z=mv.z;}
  partner.moving=n>0;partner.dx=dx;
  const realDist=hypot(partner.x-oldX,partner.z-oldZ);partner.visualSpeed=dt>0?realDist/dt:0;
  if(partner.moving)partner.stridePhase=(partner.stridePhase+realDist*1.95)%4096;
  if(!partner.moving&&oldSpeed>.3&&partner.pose<=0)partner.recoverT=.17;
  partner.lean=clamp(dx*.055,-.075,.075);
- partner.stamina=clamp(partner.stamina+(n?-(sprint?20:2.6):13)*dt,0,100);
+ {const recovery=phase==='pointEnd'?4.0:1.8,drain=sprint?8.5:2.5;partner.stamina=clamp(partner.stamina+(n?-drain:recovery)*dt,0,100);}
  if(partner.pose<=0)partner.motion=n?(Math.abs(dx)>=Math.abs(dz)?dx>0?'run_right':'run_left':dz>0?'forward':'backward'):'idle';
  stabilizeYellowFacing(partner,dt);
  if(remoteQueued&&phase==='rally'&&ball&&ball.lastHit===1){
@@ -421,9 +664,83 @@ function stepRemotePartner(dt){
   }else if(clock>remoteQueued.expires)remoteQueued=null;
  }else if(remoteQueued&&(!ball||phase!=='rally'||ball.lastHit!==1))remoteQueued=null;
 }
+function autoHumanAim(){
+ const foes=members[1],avg=foes.reduce((sum,p)=>sum+p.x,0)/Math.max(1,foes.length);
+ const dx=avg>.25?-1:avg<-.25?1:(ball?.x||0)>=0?-1:1;
+ return{dx,dz:1};
+}
+function autoHumanMove(){
+ let goX=nearHasPartner?-partnerLane*2.25:0,goZ=4.85;
+ if(phase==='serveReady'||phase==='serveDrop')return{dx:0,dz:0,sprint:false};
+ if(phase==='rally'&&ball&&ball.lastHit===1){
+  let future=.12;
+  if(ball.vz<-.08)future=clamp((4.9-ball.z)/ball.vz,.05,.88);
+  const forecastX=clamp(ball.x+ball.vx*future,-4.30,4.30),forecastZ=clamp(ball.z+ball.vz*future,.70,9.05);
+  const chaser=nearHasPartner?chooseNearChaser(forecastX,forecastZ,future):human;
+  if(chaser===human){goX=forecastX;goZ=forecastZ;}
+  else{goX=-partnerLane*2.25;goZ=clamp(partner.z>5.5?4.65:5.15,3.4,7.0);}
+ }
+ const dx=goX-human.x,dz=goZ-human.z,dist=hypot(dx,dz);
+ return{dx:Math.abs(dx)>.08?dx:0,dz:Math.abs(dz)>.08?dz:0,sprint:dist>2.15&&boost>18};
+}
+function stepAutoHumanActions(dt){
+ if(!autoReal||netMode!=='offline'||paused||phase==='loading'||phase==='intro')return;
+ if(phase==='serveReady'&&server===0&&servingActor(0)===human){
+  autoServeTimer+=dt;
+  if(autoServeTimer>.82){autoServeTimer=0;startServe(0,serveFaults===1?random(.42,.66):random(.30,.90),autoHumanAim(),Math.random()<.22?'backhand':'forehand');}
+ }else autoServeTimer=0;
+ if(phase!=='rally'||!ball||ball.lastHit!==1||autoHumanAttempted)return;
+ if(!contactPossible(0,'forehand',human))return;
+ let shot=ball.x<human.x?'backhand':'forehand';
+ const r=Math.random();
+ if(ball.h>1.45&&r<.24&&contactPossible(0,'smash',human))shot='smash';
+ else if(r<.16)shot='lob';
+ else if(r>.94&&human.z>=5.3)shot='drop';
+ autoHumanAttempted=true;
+ if(Math.random()<.08){message('AUTO REAL · HUMANO FALLÓ',.45);return;}
+ const power=shot==='lob'?random(.43,.63):shot==='drop'?random(.28,.46):shot==='smash'?random(.64,.84):random(.48,.76);
+ if(!playHit(0,shot,power,false,'rear',human))autoHumanAttempted=false;
+}
+function setAutoReal(enabled){
+ if(!careerMode){message('AUTO REAL: SOLO EN MODO CARRERA',1.2);return;}
+ autoReal=!!enabled;keys.clear();heldGlass.clear();glassComboUsed=false;charging=null;queued=null;autoServeTimer=0;autoHumanAttempted=false;
+ saveAutoReal(autoReal);
+ if(autoReal){paused=false;help=false;resumeAmbience();message('QA · AUTO REAL ACTIVADO · F7 PARA DETENER',1.8);}
+ else message('QA · AUTO REAL DESACTIVADO',1.3);
+}
+let exteriorTestSide=1;
+function launchExteriorTestBall(){
+ if(netMode!=='offline'||careerMode){message('X3 TEST: USALO EN JUEGO RÁPIDO',1);return;}
+ exteriorTestSide*=-1;const side=exteriorTestSide;
+ // Ball already bounced legally on the near side and is climbing over the 3 m
+ // side enclosure. This is only a QA shortcut for testing door/exterior play.
+ ball=makeBall(side*3.45,6.15,.48,side*1.75,-.18,9.80,1);ball.bounces=1;ball.wallOK=true;ball.age=.35;ball.serveFlight=false;ball.netCrossed=true;
+ phase='rally';robotAttempted=true;allyAttempted=false;autoHumanAttempted=false;queued=null;charging=null;nearChaseBall=null;nearChaseOwner=null;
+ message('EXTERIOR TEST · X3 HACIA '+(side<0?'IZQUIERDA':'DERECHA')+' · SALÍ POR LA PUERTA',1.5);
+}
+function queueTapiaTest(){
+ if(phase!=='rally'||!ball||ball.lastHit===0){message('TAPIA: ESPERÁ UNA PELOTA RIVAL',.85);return;}
+ // Short, player-controlled guard. Press too early / late and the ball simply
+ // passes: no automatic save and no extended invisible reach.
+ tapiaGuard={activeFrom:clock+.075,until:clock+.62};
+ human.tapiaReadyT=.62;human.tapiaReadyTotal=.62;
+ queued={shot:'tapia',power:.68,aim:aim(),activeFrom:tapiaGuard.activeFrom,expires:tapiaGuard.until};
+ message('G · ESPALDA + PALA ARRIBA',.72);attemptQueued();
+}
+function queueExitTest(){
+ if(phase!=='rally'||!ball||ball.lastHit===0){message('E: ESPERÁ UNA PELOTA RIVAL',.85);return;}
+ const d=aim();
+ // G = Tapia; E+left/right = intento X3; E+up (or E alone) = intento X4.
+ const lateral=Math.abs(d.dx)>=Math.abs(d.dz)&&d.dx!==0;
+ const shot=lateral?'exit_x3':'exit_x4';
+ const forcedAim={dx:lateral?Math.sign(d.dx):d.dx,dz:lateral?0:1};
+ tapiaGuard=null;human.tapiaReadyT=0;
+ queued={shot,power:.88,aim:forcedAim,expires:clock+.72};
+ message(lateral?('E · INTENTO X3 '+(forcedAim.dx<0?'IZQUIERDA':'DERECHA')):'E · INTENTO X4 POR EL FONDO',.8);attemptQueued();
+}
 const strokeKeys={KeyZ:'backhand',KeyX:'forehand',KeyC:'lob',Space:'smash',KeyV:'drop'};
-const activeCodes=new Set(['F8','KeyF','Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','KeyM','KeyN','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyZ','KeyX','KeyC','KeyV','Space','KeyS','KeyA','KeyD','KeyP','ShiftLeft','ShiftRight','Escape','Enter']);
-function down(e){const code=window.PadelControls?.toLegacy(e.code)||e.code;if(window.PadelControls?.visible())return;if(netMode==='guest'){if(activeCodes.has(code)){e.preventDefault();window.parent?.postMessage({type:'padel-key',code:e.code,down:true},'*');}return;}if(activeCodes.has(code))e.preventDefault();if(e.repeat)return;if(code==='F8'){showShotStats=!showShotStats;message(showShotStats?'CONTADOR DE CONTRAPAREDES: ON':'CONTADOR DE CONTRAPAREDES: OFF',1);return;}ensureAudio();keys.add(code);
+const activeCodes=new Set(['F6','F7','F8','KeyF','KeyG','KeyE','Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','KeyM','KeyN','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyZ','KeyX','KeyC','KeyV','Space','KeyS','KeyA','KeyD','KeyP','ShiftLeft','ShiftRight','Escape','Enter']);
+function down(e){const code=window.PadelControls?.toLegacy(e.code)||e.code;if(window.PadelControls?.visible())return;if(netMode==='guest'){if(activeCodes.has(code)){e.preventDefault();window.parent?.postMessage({type:'padel-key',code:e.code,down:true},'*');}return;}if(activeCodes.has(code))e.preventDefault();if(e.repeat)return;if(code==='F6'){launchExteriorTestBall();return;}if(code==='F7'){setAutoReal(!autoReal);return;}if(code==='F8'){showShotStats=!showShotStats;message(showShotStats?'CONTADOR DE CONTRAPAREDES: ON':'CONTADOR DE CONTRAPAREDES: OFF',1);return;}ensureAudio();keys.add(code);
 if(code.startsWith('Arrow')){const a=arrows();lastArrow.dx=a.dx;lastArrow.dz=a.dz;lastArrow.t=clock;}
 if(code==='KeyF'){toggleFullscreen();return;}
 if(code==='Escape'){if(help){help=false;paused=false;}else pause();return;}
@@ -431,6 +748,8 @@ if(code==='KeyP'){pause();return;}
 if(code==='Enter'){if(phase==='intro')newMatch();else if(paused){paused=false;help=false;resumeAmbience();}return;}
  if((phase==='intro'||help||paused)&&!e.repeat){if(!careerMode&&['Digit1','Digit2','Digit3'].includes(code)){tempoIndex=Number(code.slice(-1))-1;return;}if(!careerMode&&['Digit8','Digit9'].includes(code)){tempoIndex=Number(code.slice(-1))-5;return;}if(!careerMode&&['Digit4','Digit5','Digit6','Digit7'].includes(code)){skillIndex=Number(code.slice(-1))-4;return;}if(code==='KeyM'){ambientOn=!ambientOn;resumeAmbience();return;}if(code==='KeyN'){sfxOn=!sfxOn;return;}}
 if(paused||phase==='loading'||phase==='intro')return;
+if(code==='KeyG'){queueTapiaTest();return;}
+if(code==='KeyE'){queueExitTest();return;}
 if(glassCode[code]){glassDown(code);return;}
 if(strokeKeys[code]){if(phase==='intro')newMatch();charging={code:code,shot:strokeKeys[code],started:clock};}
 }
@@ -438,14 +757,14 @@ function up(e){const code=window.PadelControls?.toLegacy(e.code)||e.code;if(wind
 if(!charging||charging.code!==code)return;
 const c=charging;charging=null;if(paused)return;const power=clamp((clock-c.started)/1.15,.14,1);
 if(phase==='serveReady'){if(server===0&&servingActor(0)===human&&c.shot!=='smash'&&c.shot!=='lob'){startServe(0,power,aim(),c.shot);}else if(server===0)message('SAQUE BAJO: Z O X',.85);return;}
-if(phase==='rally')queueShot(c.shot,power);
+if(phase==='rally')queueShot(c.shot,power,aim());
 }
 function toggleFullscreen(){try{const el=document.querySelector('main');if(document.fullscreenElement)document.exitFullscreen();else el.requestFullscreen();}catch(_){message('PANTALLA COMPLETA NO DISPONIBLE',1);}}
 window.addEventListener('keydown',down);window.addEventListener('keyup',up);
-window.addEventListener('blur',()=>{keys.clear();heldGlass.clear();glassComboUsed=false;charging=null;if(netMode==='offline'&&phase!=='intro')paused=true;});
+window.addEventListener('blur',()=>{keys.clear();heldGlass.clear();glassComboUsed=false;charging=null;if(!autoReal&&netMode==='offline'&&phase!=='intro')paused=true;});
 // Settings operate on the pause/start overlay, never over live court play.
 function settingsClick(x,y){
- if(!careerMode&&y>=304&&y<=350){for(let i=0;i<tempos.length;i++){const bx=505+i*134;if(x>=bx&&x<=bx+124){tempoIndex=i;return true;}}}
+ if(!careerMode&&y>=304&&y<=350){const bw=88,gap=7,start=505;for(let i=0;i<tempos.length;i++){const bx=start+i*(bw+gap);if(x>=bx&&x<=bx+bw){tempoIndex=i;return true;}}}
  if(!careerMode&&x>=617&&x<1061&&y>=376&&y<=422){skillIndex=clamp(Math.floor((x-619)/112),0,3);return true;}
  if(x>=615&&x<=831&&y>=459&&y<=509){ambientOn=!ambientOn;resumeAmbience();return true;}
  if(x>=847&&x<=1066&&y>=459&&y<=509){sfxOn=!sfxOn;return true;}
@@ -453,7 +772,7 @@ function settingsClick(x,y){
 }
 canvas.addEventListener('pointerdown',e=>{if(netMode==='guest')return;ensureAudio();const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*(W/r.width),y=(e.clientY-r.top)*(H/r.height);
  if(phase==='intro'||paused||help){if(settingsClick(x,y)){canvas.focus();return;}if(x>=696&&x<=973&&y>=653&&y<=711){if(phase==='intro')newMatch();else{help=false;paused=false;resumeAmbience();message('JUGANDO',.5);}canvas.focus();return;}canvas.focus();return;}
- if(y>=890&&y<=925&&x>=676&&x<=996){if(x<828)pause();else if(x>=845)newMatch();}
+ if(y>=900&&y<=932&&x>=676&&x<=996){if(x<828)pause();else if(x>=845)newMatch();}
  else if(paused)pause();canvas.focus();});
 // A4.3: White player's facing is visual only; inputs, speed, physics and
 // collision remain authoritative from the original A4.2 simulation.
@@ -533,20 +852,20 @@ function stabilizeWhiteFacing(dt){
  }
 }
 function stepHuman(dt){human.pose=Math.max(0,human.pose-dt);human.frameT+=dt;human.jumpT=Math.max(0,(human.jumpT||0)-dt);human.visualExitT=Math.max(0,(human.visualExitT||0)-dt);
+ human.tapiaReadyT=Math.max(0,(human.tapiaReadyT||0)-dt);
+ if(tapiaGuard&&clock>tapiaGuard.until){tapiaGuard=null;human.tapiaReadyT=0;}
  human.savePoseT=Math.max(0,human.savePoseT-dt);
  human.recoverT=Math.max(0,human.recoverT-dt);
 if(phase==='serveDrop'&&ball&&ball.serveData?.actor===human.id){human.moving=false;return;}
 const priorSpeed=hypot(human.vx,human.vz),oldX=human.x,oldZ=human.z;
-const a=arrows(),n=hypot(a.dx,a.dz);const sprint=(keys.has('ShiftLeft')||keys.has('ShiftRight'))&&boost>8;
-const exhausted=.76+.24*clamp(boost/25,0,1),speed=(sprint?7.15:5.15)*exhausted;
+const a=autoReal?autoHumanMove():arrows(),n=hypot(a.dx,a.dz);const sprint=autoReal?!!a.sprint:(keys.has('ShiftLeft')||keys.has('ShiftRight'))&&boost>8;
+const exhausted=.76+.24*clamp(boost/25,0,1),outsideSpeed=actorOutside(human)?1.30:1,speed=(sprint?7.15:5.15)*exhausted*outsideSpeed;
 // Smooth, responsive acceleration and deceleration in court metres/second.
 const wantX=n?a.dx/n*speed:0,wantZ=n?a.dz/n*speed:0;
 const blend=1-Math.exp(-(specialMode==='arctic'?(n?5.2:2.6):(n?14.5:19.0))*dt);
 human.vx+=(wantX-human.vx)*blend;human.vz+=(wantZ-human.vz)*blend;
 if(Math.abs(human.vx)<.04)human.vx=0;if(Math.abs(human.vz)<.04)human.vz=0;
-human.x=clamp(human.x+human.vx*dt,-4.55,4.55);human.z=clamp(human.z+human.vz*dt,.45,9.3);
-if((human.x<=-4.55&&human.vx<0)||(human.x>=4.55&&human.vx>0))human.vx=0;
-if((human.z<=.45&&human.vz<0)||(human.z>=9.3&&human.vz>0))human.vz=0;
+{const mv=resolveActorMove(human,human.x+human.vx*dt,human.z+human.vz*dt,0);human.x=mv.x;human.z=mv.z;if(mv.blockedX)human.vx=0;if(mv.blockedZ)human.vz=0;}
 const wasMoving=human.a45WasMoving===true;
 const distance=hypot(human.x-oldX,human.z-oldZ);
 const actualSpeed=dt>0?distance/dt:0;
@@ -562,7 +881,7 @@ if(human.moving){const motion=Math.abs(human.vx)>Math.abs(human.vz)*.65?(human.v
 if(human.previous!==motion){human.previous=motion;if(human.pose===0)human.frameT=0;}if(human.pose===0)human.motion=motion;
 }else if(human.pose===0)human.motion='idle';
 stabilizeWhiteFacing(dt);
-boost=clamp(boost+(n?-(sprint?20:2.6):13)*dt,0,100);
+{const recovery=phase==='pointEnd'?4.0:1.8,drain=sprint?8.5:2.5;boost=clamp(boost+(n?-drain:recovery)*dt,0,100);}
 if(human.pose===0&&ball&&phase==='rally'&&ball.lastHit===1&&ball.wallCount>0&&ball.z<3.4&&ball.vz>0&&!human.moving)human.motion='glass';}
 // Preserve a stable home side until white *actually* crosses into the
 // opposite sector. Unlike an immediate x-sign check this avoids lane flicker.
@@ -586,46 +905,49 @@ function chooseNearChaser(x,z,arrival){
 // Player body separation only: no racket reach, ball physics, or collision
 // response is changed. Local white takes priority; remote co-op splits pushes.
 function separateTeammates(){
- if(!nearHasPartner)return;
- const minDist=.86;
- let dx=partner.x-human.x,dz=partner.z-human.z,dist=hypot(dx,dz);
- if(dist>=minDist)return;
- if(dist<.0001){dx=partnerLane;dz=0;dist=0;}
- else{dx/=dist;dz/=dist;}
- const overlap=minDist-dist;
- const remoteShare=remoteActive?.5:0;
- const hx=human.x,hz=human.z;
- partner.x=clamp(partner.x+dx*overlap*(1-remoteShare),-4.5,4.5);
- partner.z=clamp(partner.z+dz*overlap*(1-remoteShare),.45,9.3);
- if(remoteShare){human.x=clamp(human.x-dx*overlap*remoteShare,-4.55,4.55);human.z=clamp(human.z-dz*overlap*remoteShare,.45,9.3);}
- // If a partner is against a boundary, make a bounded second attempt.
- const remain=minDist-hypot(partner.x-human.x,partner.z-human.z);
- if(remain>.001){
-  if(!remoteActive){human.x=clamp(hx-dx*remain,-4.55,4.55);human.z=clamp(hz-dz*remain,.45,9.3);}
-  else{partner.x=clamp(partner.x+dx*remain*.5,-4.5,4.5);human.x=clamp(human.x-dx*remain*.5,-4.55,4.55);}
+ // 3v3 needs pairwise body separation. The human keeps priority: when an AI
+ // overlaps P1, the AI yields; AI-vs-AI pairs share the correction.
+ for(const team of [0,1]){
+  const roster=members[team];
+  for(let i=0;i<roster.length;i++)for(let j=i+1;j<roster.length;j++){
+   const a=roster[i],b=roster[j],minDist=is3v3?.98:.86;
+   let dx=b.x-a.x,dz=b.z-a.z,dist=hypot(dx,dz);
+   if(dist>=minDist)continue;
+   if(dist<.0001){dx=(j-i)%2?1:-1;dz=0;dist=1;}else{dx/=dist;dz/=dist;}
+   const overlap=minDist-dist,near=team===0,zmin=near?.45:10.7,zmax=near?9.3:19.45;
+   if(a===human){const m=resolveActorMove(b,b.x+dx*overlap,b.z+dz*overlap,team);b.x=m.x;b.z=m.z;}
+   else if(b===human){const m=resolveActorMove(a,a.x-dx*overlap,a.z-dz*overlap,team);a.x=m.x;a.z=m.z;}
+   else{
+    const ma=resolveActorMove(a,a.x-dx*overlap*.5,a.z-dz*overlap*.5,team),mb=resolveActorMove(b,b.x+dx*overlap*.5,b.z+dz*overlap*.5,team);
+    a.x=ma.x;a.z=ma.z;b.x=mb.x;b.z=mb.z;
+   }
+  }
  }
 }
 function stepDoublesAI(dt){
  updatePartnerLane();
- for(const p of [partner,robot,robot2]){if(!activeActors.has(p)||(p===partner&&remoteActive))continue;const oldPose=p.pose;p.cool=Math.max(0,p.cool-dt);p.pose=Math.max(0,p.pose-dt);if(p===partner)p.jumpT=Math.max(0,(p.jumpT||0)-dt);if(p.pose<=0)p.charge=0;
-  if(p===partner){p.frameT+=dt;p.recoverT=Math.max(0,(p.recoverT||0)-dt);p.splitStepT=Math.max(0,(p.splitStepT||0)-dt);if(oldPose>0&&p.pose<=0)p.recoverT=.18;}
+ for(const p of [partner,partner2,robot,robot2,robot3]){if(!activeActors.has(p)||(p===partner&&remoteActive))continue;const oldPose=p.pose;p.cool=Math.max(0,p.cool-dt);p.pose=Math.max(0,p.pose-dt);if(p.team===0&&p!==human)p.jumpT=Math.max(0,(p.jumpT||0)-dt);if(p.pose<=0)p.charge=0;
+  if(p.team===0&&p!==human){p.frameT+=dt;p.recoverT=Math.max(0,(p.recoverT||0)-dt);p.splitStepT=Math.max(0,(p.splitStepT||0)-dt);if(oldPose>0&&p.pose<=0)p.recoverT=.18;}
  }
  const owner=servingActor();
  if(phase==='serveDrop'&&ball?.serveData?.actor===owner.id){owner.moving=false;}
- if(phase==='serveReady'&&server===1){robotServeTimer+=dt;if(robotServeTimer>.95){startServe(1,.52,{dx:0,dz:1});robotServeTimer=0;}}
- if(!remoteActive&&phase==='serveReady'&&server===0&&servingActor(0)===partner){allyServeTimer+=dt;if(allyServeTimer>.95){startServe(0,.51,{dx:0,dz:1});allyServeTimer=0;}}
+ if(phase==='serveReady'&&server===1){robotServeTimer+=dt;if(robotServeTimer>.95){startServe(1,aiServePower(),{dx:0,dz:1});robotServeTimer=0;}}
+ if(!remoteActive&&phase==='serveReady'&&server===0&&servingActor(0)!==human){allyServeTimer+=dt;if(allyServeTimer>.95){startServe(0,serveFaults===1?random(.43,.64):random(.38,.82),{dx:0,dz:1});allyServeTimer=0;}}
  const botSkill=skillLevels[skillIndex];
  for(const team of [0,1]){
-  const ais=team===0?(nearHasPartner&&!remoteActive?[partner]:[]):members[1], defending=phase==='rally'&&ball&&ball.lastHit!==team;
+  const ais=team===0?(nearHasPartner?members[0].filter(p=>p!==human&&!(remoteActive&&p===partner)):[]):members[1], defending=phase==='rally'&&ball&&ball.lastHit!==team;
+  // A5.10.1: E is only an attempt. Rivals defend it normally while the ball
+  // remains playable inside the court; only a physically completed X3/X4 ends the point.
   const incoming=defending?ball:null;
   const future=incoming?clamp((team===0?5.2-incoming.z:15.8-incoming.z)/(incoming.vz||1),.06,.85):0;
-  const forecastX=incoming?clamp(incoming.x+incoming.vx*future,-4.35,4.35):0;
-  const forecastZ=incoming?clamp(incoming.z+incoming.vz*future,team===0?.8:11.15,team===0?9.3:18.9):0;
+  const incomingOut=incoming&&Math.abs(incoming.x)>COURT_X+.03;
+  const forecastX=incoming?clamp(incoming.x+incoming.vx*future,incomingOut?-OUTER_X+.15:-4.35,incomingOut?OUTER_X-.15:4.35):0;
+  const forecastZ=incoming?clamp(incoming.z+incoming.vz*future,incomingOut?OUTER_Z_MIN:team===0?.8:11.15,incomingOut?OUTER_Z_MAX:team===0?9.3:18.9):0;
   let chaser=null;
   if(incoming){const participants=members[team];
    chaser=team===0&&incoming.serveReceiver?participants.find(p=>p.id===incoming.serveReceiver):null;
    if(!chaser){
-    if(team===0&&!remoteActive&&nearHasPartner){
+    if(team===0&&!remoteActive&&nearHasPartner&&!is3v3){
      const candidate=chooseNearChaser(forecastX,forecastZ,future);
      if(nearChaseBall!==incoming){nearChaseBall=incoming;nearChaseOwner=candidate;nearChaseLockT=clock;}
      // Resist re-planning at every frame. Yellow gives way once white can
@@ -647,35 +969,59 @@ function stepDoublesAI(dt){
    }
   }
   for(const p of ais){
-   const teammate=members[team].find(v=>v!==p)||null,lane=p===robot||p===partner?-1:1;
-   let goX=teammate?lane*2.35:0,goZ=team===0?4.0:15.4;
+   const roster=members[team],idx=roster.indexOf(p),homeXs=roster.length>=3?[-2.75,0,2.75]:roster.length===2?[-2.35,2.35]:[0];
+   let goX=homeXs[Math.max(0,idx)]??0,goZ=team===0?(idx===1&&roster.length>=3?4.35:4.95):(idx===1&&roster.length>=3?15.35:15.0);
+   if(is3v3){
+    // Staggered 2+1 homes during rallies. Near side keeps the approved doubles
+    // behaviour for white + ally; the third player sweeps the deep middle.
+    if(team===0){
+     if(p===partner){goX=partnerLane*2.35;goZ=5.15;}
+     else if(p===partner2){
+      const guide=incoming?forecastX:(ball?.x||0);
+      goX=clamp(guide*.24,-1.05,1.05);goZ=2.05;
+     }
+    }else{
+     if(p===robot){goX=-2.35;goZ=14.7;}
+     else if(p===robot2){goX=2.35;goZ=14.7;}
+     else if(p===robot3){
+      const guide=incoming?forecastX:(ball?.x||0);
+      goX=clamp(guide*.24,-1.05,1.05);goZ=17.75;
+     }
+     // If one forward robot claims the ball, its partner opens the lane instead
+     // of following it, preserving a visible doubles-style front pair.
+     if(chaser===robot&&p===robot2){goX=2.65;goZ=14.55;}
+     else if(chaser===robot2&&p===robot){goX=-2.65;goZ=14.55;}
+    }
+   }
    if(phase==='serveReady'||phase==='serveDrop'){goX=p.x;goZ=p.z;}
    else if(defending&&p===chaser){p.thinking+=dt;
     const delay=team===0?.28:botSkill.reaction;
     if(p.thinking>=delay){goX=forecastX;goZ=forecastZ;}else {goX=p.x;goZ=p.z;}
    }else{
     p.thinking=0;
-    // Cover the open lane, don't stand next to the teammate.
-    if(teammate){
+    // Hold a readable lane when not chasing. In 3v3 this prevents all three
+    // AIs collapsing onto the same ball while still allowing the nearest one out.
+    if(!is3v3&&roster.length===2){
+     const teammate=roster.find(v=>v!==p);
      goX=team===0?partnerLane*2.35:(teammate.x<0?2.3:-2.3);
      goZ=team===0?clamp(teammate.z>5.5?4.85:5.20,3.3,7.4):(teammate.z<14?15.4:14.55);
-    }else {goX=0;goZ=team===0?4.8:15.2;}
+    }
    }
    if(p===owner&&phase==='serveDrop'){goX=p.x;goZ=p.z;}
-   const dx=goX-p.x,dz=goZ-p.z,len=hypot(dx,dz),speed=team===0?3.62:botSkill.speed;
-   const prevMoving=p.moving,prevSpeed=p===partner?p.visualSpeed||0:0,oldX=p.x,oldZ=p.z;
+   {const routed=exteriorRoute(p,goX,goZ,team);goX=routed.x;goZ=routed.z;}
+   const dx=goX-p.x,dz=goZ-p.z,len=hypot(dx,dz),baseSpeed=team===0?3.62:botSkill.speed,staminaFactor=.86+.14*clamp((p.stamina||100)/35,0,1),speed=baseSpeed*staminaFactor;
+   const prevMoving=p.moving,prevSpeed=p.team===0&&p!==human?p.visualSpeed||0:0,oldX=p.x,oldZ=p.z;
    p.dx=dx;p.moving=len>.17;
    if(specialMode==='arctic'){
     const desiredX=len>.17?dx/len*speed:0,desiredZ=len>.17?dz/len*speed:0,iceBlend=1-Math.exp(-(len>.17?4.3:2.2)*dt);
     p.ivx=(p.ivx||0)+(desiredX-(p.ivx||0))*iceBlend;p.ivz=(p.ivz||0)+(desiredZ-(p.ivz||0))*iceBlend;
     if(Math.abs(p.ivx)<.025)p.ivx=0;if(Math.abs(p.ivz)<.025)p.ivz=0;
-    p.x=clamp(p.x+p.ivx*dt,-4.5,4.5);p.z=clamp(p.z+p.ivz*dt,team===0?.45:10.7,team===0?9.3:19.45);
-    if(p.x<=-4.5||p.x>=4.5)p.ivx=0;if(p.z<=(team===0?.45:10.7)||p.z>=(team===0?9.3:19.45))p.ivz=0;
-    p.moving=hypot(p.ivx,p.ivz)>.18;if(p!==partner)p.frameT+=dt;
-    p.stamina=clamp(p.stamina+(p.moving?-1.8:8)*dt,0,100);
-   }else if(len>.17){const move=Math.min(len,speed*dt);p.x=clamp(p.x+dx/len*move,-4.5,4.5);p.z=clamp(p.z+dz/len*move,team===0?.45:10.7,team===0?9.3:19.45);if(p!==partner)p.frameT+=dt;p.stamina=clamp(p.stamina-1.8*dt,0,100);}
-   else p.stamina=clamp(p.stamina+8*dt,0,100);
-   if(p===partner){
+    {const mv=resolveActorMove(p,p.x+p.ivx*dt,p.z+p.ivz*dt,team);p.x=mv.x;p.z=mv.z;if(mv.blockedX)p.ivx=0;if(mv.blockedZ)p.ivz=0;}
+    p.moving=hypot(p.ivx,p.ivz)>.18;if(p.team===1)p.frameT+=dt;
+    p.stamina=clamp(p.stamina+(p.moving?-2.2:(phase==='pointEnd'?3.5:1.6))*dt,0,100);
+   }else if(len>.17){const move=Math.min(len,speed*dt),mv=resolveActorMove(p,p.x+dx/len*move,p.z+dz/len*move,team);p.x=mv.x;p.z=mv.z;if(p.team===1)p.frameT+=dt;p.stamina=clamp(p.stamina-2.2*dt,0,100);}
+   else p.stamina=clamp(p.stamina+(phase==='pointEnd'?3.5:1.6)*dt,0,100);
+   if(p.team===0&&p!==human){
     const travelled=hypot(p.x-oldX,p.z-oldZ);p.visualSpeed=dt>0?travelled/dt:0;
     if(p.moving)p.stridePhase=(p.stridePhase+travelled*1.95)%4096;
     if(prevMoving&&!p.moving&&prevSpeed>.2&&p.pose<=0)p.recoverT=.19;
@@ -699,7 +1045,7 @@ function stepDoublesAI(dt){
   if(Math.random()>=miss){
    const power=team===0?random(.43,.72):random(botSkill.low,botSkill.high);
    let bankRoute=null;
-   if(p===partner&&!incoming.serveReceiver&&incoming.h<=1.80&&Math.random()<.23){
+   if(p.team===0&&p!==human&&!incoming.serveReceiver&&incoming.h<=1.80&&Math.random()<.23){
     if(p.z<=3.35&&incoming.z<=3.8)bankRoute='rear';
     else if(p.z<=7.0&&incoming.z<=7.4&&Math.abs(incoming.x)>3.5&&Math.abs(p.x)>3.0)
      bankRoute=incoming.x<0?'left':'right';
@@ -718,7 +1064,7 @@ if(phase==='serveDrop'){serveT+=dt;b.vh-=G*dt;b.h+=b.vh*dt;
  if(b.h<=0&&serveBounceT===0){b.h=0;b.vh=2.8;serveBounceT=serveT;}
  if(serveBounceT>0&&serveT-serveBounceT>.17){finishServe();}return;}
 if(phase!=='rally')return;
-const old={x:b.x,z:b.z,h:b.h};b.trail.push(project(b.x,b.z,b.h));const trailMax=specialMode==='cyber'?18:7;if(b.trail.length>trailMax)b.trail.shift();
+const old={x:b.x,z:b.z,h:b.h};b.trail.push(project(b.x,b.z,b.h));const trailMax=specialMode==='cyber'?18:specialMode==='neon'?14:7;if(b.trail.length>trailMax)b.trail.shift();
 b.vh-=G*dt;b.x+=b.vx*dt;b.z+=b.vz*dt;b.h+=b.vh*dt;
 // Wall physics uses velocity reflection. Bank shots are not teleported to a chosen spot.
 if(b.bankRoute?.startsWith('rear')&&b.bankStage===0&&b.z<=0&&b.vz<0){
@@ -727,32 +1073,50 @@ if(b.bankRoute?.startsWith('rear')&&b.bankStage===0&&b.z<=0&&b.vz<0){
  b.wallCount++;lastBank='FONDO';message(b.bank?'FONDO · BUSCANDO LATERAL':'REBOTE CONTRAPARED',.54);
 }
 // The net has height ~0.88m. Interpolate actual crossing instead of testing frame endpoint.
-if((old.z-10)*(b.z-10)<=0&&!b.netCrossed){const ratio=(10-old.z)/(b.z-old.z||1),height=old.h+(b.h-old.h)*ratio;b.netCrossed=true;if(height<.90){endPoint(1-b.lastHit,'RED');return;}}
+if((old.z-NET_Z)*(b.z-NET_Z)<=0&&!b.netCrossed){const ratio=(NET_Z-old.z)/(b.z-old.z||1),height=old.h+(b.h-old.h)*ratio,xAt=old.x+(b.x-old.x)*ratio;if(Math.abs(xAt)<=COURT_X){b.netCrossed=true;if(height<.90){endPoint(1-b.lastHit,'RED');return;}}}
 // Shots hitting any wall before bouncing on the opponent's floor are faults.
 const xOut=Math.abs(b.x)>5,zOut=b.z<0||b.z>20;
-if((xOut||zOut)&&!b.wallOK&&!b.bank){endPoint(1-b.lastHit,'VIDRIO ANTES DEL PIQUE');return;}
+if((xOut||zOut)&&!b.wallOK&&!b.bank&&!b.externalReturn){endPoint(1-b.lastHit,'VIDRIO ANTES DEL PIQUE');return;}
 if(b.h<=0){const side=b.z<10?0:1;
-if(Math.abs(b.x)>5||b.z<0||b.z>20){endPoint(1-b.lastHit,'FUERA');return;}
+if(Math.abs(b.x)>5||b.z<0||b.z>20){endPoint(b.externalReturn?1-b.lastHit:(b.wallOK?b.lastHit:1-b.lastHit),b.externalReturn?'DEVOLUCIÓN EXTERIOR FALLIDA':'FUERA');return;}
 if(side===b.lastHit&&b.bounces===0){endPoint(1-b.lastHit,'PIQUE EN CAMPO PROPIO');return;}
 if(b.serveFlight&&b.bounces===0){const validBox=b.lastHit===0?(b.z>=10&&b.z<=17):(b.z>=3&&b.z<=10);
 const validDiagonal=Math.sign(b.x)===-b.serveSide;
-if(!validBox||!validDiagonal){endPoint(1-b.lastHit,'FALTA DE SAQUE');return;}b.serveFlight=false;serveFaults=0;}
+if(!validBox||!validDiagonal){endPoint(1-b.lastHit,'FALTA DE SAQUE');return;}b.serveFlight=false;}
 fx('pique',{who:side});b.bounces++;b.h=0;if(b.bounces>=2){endPoint(b.lastHit,'DOBLE PIQUE');return;}
-b.vh=Math.max(1.7,Math.abs(b.vh)*.69);b.vz*=.81;b.vx*=.88;b.wallOK=true;}
-if(Math.abs(b.x)>=5){const side=b.x<0?'left':'right';
- const bankSide=(b.bankRoute==='left'||b.bankRoute==='right')&&b.bankStage===0||
-                 b.bankRoute==='rear_'+side&&b.bankStage===1;
- fx('vidrio',{who:b.z>10?1:0});b.x=clamp(b.x,-5,5);b.vx=-b.vx*.77;b.wallCount++;
- if(bankSide){b.bankStage=2;b.bank=false;lastBank=side==='left'?'IZQUIERDO':'DERECHO';message('REBOTE · '+lastBank,.6);}
+b.vh=Math.max(1.7,Math.abs(b.vh)*.69);b.vz*=.81;b.vx*=.88;b.wallOK=true;
+if(b.exitTest&&b.lastHit===0&&b.bounces===1&&side===1&&!b.exitTest.launched){
+ b.exitTest.launched=true;
+ const q=clamp(b.exitTest.quality??.5,0,1);
+ if(b.exitTest.mode==='x3'){
+  b.vx=b.exitTest.side*(1.18+2.45*q);b.vz=.72+.72*q;b.vh=4.75+5.15*q;
+ }else{
+  b.vx=(b.exitTest.side||0)*(.18+.28*q);b.vz=2.65+3.25*q;b.vh=6.05+4.85*q;
  }
-if(b.z<=0||b.z>=20){fx('vidrio',{who:b.z>=20?1:0});b.z=clamp(b.z,0,20);b.vz=-b.vz*.75;b.wallCount++;}
+ message((b.exitTest.mode==='x3'?'X3':'X4')+' · INTENTO DE SALIDA',.72);
+}}
+
+for(const sx of [-COURT_X,COURT_X]){const t=crossing(old.x,b.x,sx);if(t===null)continue;const zAt=old.z+(b.z-old.z)*t,hAt=old.h+(b.h-old.h)*t;
+ const side=sx<0?'left':'right',bankSide=(b.bankRoute==='left'||b.bankRoute==='right')&&b.bankStage===0||b.bankRoute==='rear_'+side&&b.bankStage===1;
+ if(!bankSide&&(inDoorZ(zAt)||hAt>SIDE_GLASS_H))continue;
+ fx('vidrio',{who:zAt>10?1:0});b.x=sx+(sx<0?.015:-.015);b.vx=-b.vx*.77;b.wallCount++;
+ if(bankSide){b.bankStage=2;b.bank=false;lastBank=side==='left'?'IZQUIERDO':'DERECHO';message('REBOTE · '+lastBank,.6);}
+ break;
+}
+for(const sz of [0,20]){const t=crossing(old.z,b.z,sz);if(t===null)continue;const xAt=old.x+(b.x-old.x)*t,hAt=old.h+(b.h-old.h)*t;if(Math.abs(xAt)>COURT_X||hAt>BACK_GLASS_H)continue;fx('vidrio',{who:sz===20?1:0});b.z=sz+(sz===0?.015:-.015);b.vz=-b.vz*.75;b.wallCount++;break;}
+if(b.exitTest?.launched&&!b.exitTest.cleared){
+ const cleared=b.exitTest.mode==='x3'?Math.abs(b.x)>COURT_X+.06:b.z>20.06;
+ if(cleared){b.exitTest.cleared=true;b.exitTest.winT=.62;message(b.exitTest.mode==='x3'?'¡X3! PELOTA FUERA':'¡X4! PELOTA FUERA',.9);}
+}
+if(b.exitTest?.cleared){b.exitTest.winT-=dt;if(b.exitTest.winT<=0){endPoint(0,b.exitTest.mode==='x3'?'X3':'X4');return;}}
+if(Math.abs(b.x)<COURT_X&&b.z>0&&b.z<20)b.externalReturn=false;
 if(b.age>11){endPoint(1-b.lastHit,'LÍMITE DE TIEMPO');}
 }
 // A4.4: purely cosmetic serve-stage selector, synchronized by existing ball
 // state and real bounce. This does not schedule, accelerate, or delay a serve.
 function selectA44ServeSprite(p){
  if(!a44Enabled||server!==0||servingActor(0)!==p)return null;
- const isYellow=p===partner;
+ const isYellow=p.team===0&&p!==human;
  if(isYellow&&!a44Yellow)return null;
  // Walk normally while lining up a serve; only show the stationary
  // serve-ready pose after the feet have stopped. No changes to serve rules.
@@ -775,6 +1139,15 @@ function selectA44ServeSprite(p){
 }
 // WHITE PLAYER VISUAL MOTION TEST (A1): Sprite timing only, physics unchanged.
 function selectHumanSprite(){
+ // Provisional A5.10 Tapia visual: hold a rear-facing/high-racket frame while
+ // the real timed contact window is active. A dedicated sprite sequence can
+ // replace this later without touching the mechanic.
+ if(human.tapiaReadyT>0){
+  const back=assets.human.backhand||[];
+  if(back.length)return back[Math.min(back.length-1,Math.max(0,Math.floor(back.length*.62)))];
+  const down=a48Enabled?a48.white_down:null;
+  if(down?.length)return down[Math.min(down.length-1,Math.floor(down.length*.45))];
+ }
  const special=selectA44ServeSprite(human);if(special)return special;
  // During charging keep regular movement/ready pose. Prepare appears only after a valid smash contact.
  if(a44Enabled&&human.jumpT>0&&a44.white_smash_strike){
@@ -859,8 +1232,10 @@ function selectYellowSprite(p){
  return yellow.ready_back;
 }
 function drawHumanActor(p,which){
- const src=p===human?selectHumanSprite():selectYellowSprite(p);
- if(!src)return;const im=images[src.src];if(!im?.complete||!im.naturalWidth)return;
+ let src=p===human?selectHumanSprite():selectYellowSprite(p);
+ if(!src)return;let im=images[src.src];
+ if(!im?.complete||!im.naturalWidth){src=p===human?whiteIdleFrame():yellow.ready_back;im=src?images[src.src]:null;}
+ if(!src||!im?.complete||!im.naturalWidth)return;
  const pr=project(p.x,p.z),[x0,y0,x1,y1]=src.bounds;const sw=x1-x0,sh=y1-y0;
  const smashVisual=p===human&&a44Enabled&&src.src?.startsWith('assets/a44/white_smash_');
  const smashScale=smashVisual?(src.src.includes('_prepare')?1.23:src.src.includes('_strike')?1.19:1.06):1;
@@ -896,14 +1271,15 @@ function drawHumanActor(p,which){
 function drawRobotActor(p){
  let name='robot-ready-clean';
  if(p.pose>0)name=p.motion==='backhand'?'robot-backhand-clean':'robot-forehand-clean';
- else if(p.moving){const files=p.dx>0?['robot-run-right-a','robot-run-right-b']:['robot-run-left-a','robot-run-left-b'];name=files[Math.floor(p.frameT*8)%2];}
+ else if(p.moving){const files=p.dx>0?['robot-run-right-a','robot-run-right-b']:['robot-run-left-a','robot-run-left-b'];name=files[Math.floor(p.frameT*ROBOT_RUN_FPS)%2];}
  const im=images[assets.robot[name]||assets.robot['robot-ready-clean']];if(!im?.complete||!im.naturalWidth)return;
  const pr=project(p.x,p.z),height=196*pr.scale,width=height*(im.width/im.height);
- ctx.save();if(p===robot2){ctx.filter='hue-rotate(135deg) saturate(1.3)';}
+ ctx.save();if(p===robot2){ctx.filter='hue-rotate(135deg) saturate(1.3)';}else if(p===robot3){ctx.filter='hue-rotate(245deg) saturate(1.25)';}
  ctx.drawImage(im,pr.x-width/2,pr.y-height,width,height);ctx.restore();
- drawTag(pr.x,pr.y+12,p.id,p===robot?'#ff6078':'#ffa944');
+ // Rival names stay clear of the net: smaller and above the robot silhouette.
+ drawTag(pr.x,pr.y-height-5,p.id,p===robot?'#ff6078':p===robot2?'#ffa944':'#b98cff',true);
 }
-function drawTag(x,y,t,color){ctx.save();ctx.font='bold 13px system-ui';ctx.textAlign='center';const w=Math.max(44,ctx.measureText(t).width+15);ctx.fillStyle='#081b2dbd';ctx.fillRect(x-w/2,y-13,w,19);ctx.fillStyle=color;ctx.fillText(t,x,y);ctx.restore();}
+function drawTag(x,y,t,color,compact=false){ctx.save();ctx.font=compact?'bold 11px system-ui':'bold 13px system-ui';ctx.textAlign='center';const pad=compact?10:15,w=Math.max(compact?34:44,ctx.measureText(t).width+pad),h=compact?16:19,top=y-(compact?11:13);ctx.fillStyle=compact?'#081b2da8':'#081b2dbd';ctx.fillRect(x-w/2,top,w,h);ctx.fillStyle=color;ctx.fillText(t,x,y);ctx.restore();}
 function drawServeBallPoint(p,scale){
  const r=clamp(4.4*scale,2.4,4.1);
  ctx.save();ctx.shadowColor='#caff44';ctx.shadowBlur=r*2.4;
@@ -914,6 +1290,9 @@ function drawBall(){
  // A4.5: ball held in left hand during white serve prep. Same physical ball
  // follows existing bounce/flight on release; visual-only correction.
  if(a45Enabled&&server===0&&servingActor(0)===human&&(phase==='serveReady'||phase==='serveDrop')&&(!ball||ball.serveData?.actor===human.id)){
+  // While the player walks into serving position there is no stable hand pose,
+  // so hiding the held ball avoids the visual effect of a ball floating beside him.
+  if(phase==='serveReady'&&(human.moving||hypot(human.vx,human.vz)>.16))return;
   const pp=project(human.x,human.z),ht=215*pp.scale;
   const inHand={x:pp.x+ht*.278,y:pp.y-ht*.590};
   let point=inHand;
@@ -926,13 +1305,13 @@ function drawBall(){
   }else{drawServeBallPoint(point,pp.scale);return;}
  }
  if(!ball||phase==='pointEnd')return;const ground=project(ball.x,ball.z),p=project(ball.x,ball.z,ball.h),r=clamp(4.4*p.scale,2.4,4.1);
- const cyber=specialMode==='cyber',arctic=specialMode==='arctic',celestial=specialMode==='celestial';
- const fill=cyber?'#54f7ff':arctic?'#ff6a24':celestial?'#ff3edb':'#eaff35';
- const glow=cyber?'#38ddff':arctic?'#ff7b24':celestial?'#ff72e7':'#caff44';
- const trail=cyber?'#55f6ff':arctic?'#ff9b52':celestial?'#ff7de8':'#dffd5a';
+ const cyber=specialMode==='cyber',neon=specialMode==='neon',arctic=specialMode==='arctic',celestial=specialMode==='celestial';
+ const fill=cyber?'#54f7ff':neon?'#eaff35':arctic?'#ff6a24':celestial?'#ff3edb':'#eaff35';
+ const glow=cyber?'#38ddff':neon?'#9dff2f':arctic?'#ff7b24':celestial?'#ff72e7':'#caff44';
+ const trail=cyber?'#55f6ff':neon?'#c8ff4b':arctic?'#ff9b52':celestial?'#ff7de8':'#dffd5a';
 ctx.save();ctx.fillStyle='#00112090';ctx.beginPath();ctx.ellipse(ground.x,ground.y+3,r*1.8,r*.53,0,0,Math.PI*2);ctx.fill();
-for(let i=0;i<ball.trail.length;i++){const pos=ball.trail[i],op=(i+1)/ball.trail.length;ctx.globalAlpha=op*(cyber?.48:.15);ctx.fillStyle=trail;ctx.shadowColor=cyber?glow:'transparent';ctx.shadowBlur=cyber?r*3:0;ctx.beginPath();ctx.arc(pos.x,pos.y,r*(cyber?.72:.5),0,7);ctx.fill();}
-ctx.globalAlpha=1;ctx.shadowColor=glow;ctx.shadowBlur=r*(cyber?5.2:2.4);ctx.fillStyle=fill;ctx.strokeStyle='#ffffff';ctx.lineWidth=cyber?1.3:.9;ctx.beginPath();ctx.arc(p.x,p.y,r*(cyber?1.12:1),0,7);ctx.fill();ctx.stroke();ctx.restore();}
+for(let i=0;i<ball.trail.length;i++){const pos=ball.trail[i],op=(i+1)/ball.trail.length;ctx.globalAlpha=op*(cyber?.48:neon?.34:.15);ctx.fillStyle=trail;ctx.shadowColor=(cyber||neon)?glow:'transparent';ctx.shadowBlur=cyber?r*3:neon?r*2.5:0;ctx.beginPath();ctx.arc(pos.x,pos.y,r*(cyber?.72:neon?.66:.5),0,7);ctx.fill();}
+ctx.globalAlpha=1;ctx.shadowColor=glow;ctx.shadowBlur=r*(cyber?5.2:neon?4.3:2.4);ctx.fillStyle=fill;ctx.strokeStyle='#ffffff';ctx.lineWidth=cyber?1.3:neon?1.15:.9;ctx.beginPath();ctx.arc(p.x,p.y,r*(cyber?1.12:neon?1.08:1),0,7);ctx.fill();ctx.stroke();ctx.restore();}
 function drawGuide(){if(!ball||phase!=='rally')return;const b=ball,disc=b.vh*b.vh+2*G*b.h,T=clamp((b.vh+Math.sqrt(Math.max(0,disc)))/G,.05,2.3);
 const x=b.x+b.vx*T,z=b.z+b.vz*T;if(Math.abs(x)>5||z<0||z>20)return;const p=project(x,z);
 ctx.save();ctx.strokeStyle=b.lastHit===1?'#5cfffba8':'#ffffffe0';ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.beginPath();ctx.ellipse(p.x,p.y,12*p.scale,7*p.scale,0,0,7);ctx.stroke();ctx.restore();}
@@ -942,28 +1321,34 @@ if(value>0){if(!energy){const gd=ctx.createLinearGradient(x,0,x+w,0);gd.addColor
 ctx.fillRect(x+2,y+2,(w-4)*value,h-4);}
 if(!energy){ctx.strokeStyle='#f6faff';ctx.lineWidth=2.5;const indicator=clamp(x+value*w,x+1,x+w-1);ctx.beginPath();ctx.moveTo(indicator,y-4);ctx.lineTo(indicator,y+h+4);ctx.stroke();}
 ctx.restore();}
-function drawTop(){ctx.save();ctx.fillStyle='#071429';rect(727,28,192,85,5);ctx.fill();ctx.textAlign='center';ctx.fillStyle='#f3fbff';ctx.font='bold 41px system-ui';ctx.fillText(score(0),767,72);ctx.fillText(score(1),878,72);
-ctx.fillStyle='#38ccff';ctx.fillRect(822,42,2,31);ctx.font='bold 15px system-ui';ctx.fillText(`JUEGOS ${games[0]} – ${games[1]}`,824,104);ctx.restore();}
+function drawServeLights(){
+ // Two compact service-attempt indicators per team. The serving side shows
+ // both lights on for first serve, one for second serve; the receiver stays dim.
+ const groups=[{team:0,x:[610,632],color:'#62ddff'},{team:1,x:[1040,1062],color:'#ff667a'}],y=76;
+ for(const g of groups){const remaining=server===g.team?Math.max(0,2-serveFaults):0;for(let i=0;i<2;i++){ctx.save();ctx.beginPath();ctx.arc(g.x[i],y,7.2,0,Math.PI*2);ctx.fillStyle='#07111ed8';ctx.fill();ctx.strokeStyle='#a9c1d06b';ctx.lineWidth=1;ctx.stroke();if(i<remaining){ctx.beginPath();ctx.arc(g.x[i],y,4.8,0,Math.PI*2);ctx.fillStyle=g.color;ctx.shadowColor=g.color;ctx.shadowBlur=8;ctx.fill();}ctx.restore();}}
+}
+function drawTop(){ctx.save();ctx.fillStyle='#071429';rect(727,28,192,87,5);ctx.fill();ctx.textAlign='center';ctx.fillStyle='#f3fbff';ctx.font='bold 41px system-ui';ctx.fillText(score(0),767,72);ctx.fillText(score(1),878,72);
+ctx.fillStyle='#38ccff';ctx.fillRect(822,42,2,31);ctx.font='bold 20px system-ui';ctx.fillText(`JUEGOS ${games[0]} – ${games[1]}`,824,107);ctx.restore();drawServeLights();}
 function drawHUD(){ctx.save();const playerPower=netMode==='guest'?netHostPower:charging?clamp((clock-charging.started)/1.15,0,1):queued?queued.power:0;
 // Positions belong exactly to the user's artwork: two independent bars, one for each player.
 drawMeter(127,858,231,18,playerPower);drawMeter(205,895,150,15,boost/100,true);
 drawMeter(1326,858,231,18,remoteActive?(netMode==='guest'?netRemotePower:remoteCharge?clamp((clock-remoteCharge.started)/1.15,0,1):remoteQueued?.power||0):robotCharge);drawMeter(1404,895,150,15,remoteActive?partner.stamina/100:robotStamina/100,true);
 // Redesigned match-control panel. Covers the tiny baked-in raster HUD only.
-const hudX=664,hudY=825,hudW=344,hudH=106;
+const hudX=664,hudY=837,hudW=344,hudH=98;
 ctx.fillStyle='#061626f8';rect(hudX,hudY,hudW,hudH,9);ctx.fill();
 ctx.strokeStyle='#438db7';ctx.lineWidth=2;ctx.stroke();
 ctx.textAlign='center';ctx.fillStyle='#ffffff';ctx.font='bold 27px system-ui';
-ctx.fillText('RALLY '+rally,750,862);
-ctx.fillStyle='#b6dbef';ctx.font='bold 16px system-ui';
-ctx.fillText('RÉCORD ANTERIOR: '+longestRally,919,859);
-ctx.fillStyle='#91bed8';ctx.font='13px system-ui';ctx.fillText('Golpes en el punto',750,880);
-const drawAction=(x,title)=>{ctx.fillStyle='#156491';rect(x,890,151,35,5);ctx.fill();ctx.strokeStyle='#64b9e1';ctx.lineWidth=1.3;ctx.stroke();ctx.fillStyle='#f7fcff';ctx.font='bold 16px system-ui';ctx.fillText(title,x+75.5,913);};
+ctx.fillText('RALLY '+rally,750,873);
+ctx.fillStyle='#b6dbef';ctx.font='bold 20px system-ui';
+ctx.fillText('RÉCORD: '+longestRally,919,871);
+ctx.fillStyle='#91bed8';ctx.font='13px system-ui';ctx.fillText('Golpes en el punto',750,890);
+const drawAction=(x,title)=>{ctx.fillStyle='#156491';rect(x,900,151,31,5);ctx.fill();ctx.strokeStyle='#64b9e1';ctx.lineWidth=1.3;ctx.stroke();ctx.fillStyle='#f7fcff';ctx.font='bold 15px system-ui';ctx.fillText(title,x+75.5,921);};
 drawAction(676,'PAUSA');drawAction(845,'REINICIAR');
 if(powerBannerT>0){ctx.fillStyle='#122845d9';rect(664,189,344,46,9);ctx.fill();ctx.strokeStyle='#f3c961';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#fff1b7';ctx.font='bold 25px system-ui';ctx.fillText('POWER SHOT',836,221);}
 if(showShotStats){ctx.fillStyle='#081b2ddd';rect(1101,42,480,40,7);ctx.fill();ctx.fillStyle='#e8faff';ctx.textAlign='center';ctx.font='bold 17px system-ui';ctx.fillText('LATERALES  NORMALES: '+lateralNormal+'  |  POWER: '+lateralPower,1341,69);}
 // PAUSA and REINICIAR are clickable; TECLAS is the separate HTML button.
 if(phase==='intro'||phase==='loading'||paused)drawSettingsPanel();
-if(alertT>0&&!paused&&phase!=='intro'&&phase!=='loading'){ctx.textAlign='center';ctx.font='bold 16px system-ui';const width=clamp(ctx.measureText(alert).width+48,220,760);ctx.fillStyle='#001b30cf';rect(836-width/2,150,width,39,6);ctx.fill();ctx.fillStyle='#dffaff';ctx.fillText(alert,836,176);}
+if(alertT>0&&!paused&&phase!=='intro'&&phase!=='loading'){ctx.textAlign='center';ctx.font='bold 22px system-ui';const width=clamp(ctx.measureText(alert).width+64,270,880);ctx.fillStyle='#001b30e8';rect(836-width/2,145,width,52,8);ctx.fill();ctx.strokeStyle='#3c9bc7aa';ctx.lineWidth=1.2;ctx.stroke();ctx.fillStyle='#f0fcff';ctx.fillText(alert,836,179);}
 ctx.restore();}
 function settingsButton(x,y,w,h,title,selected){
  ctx.fillStyle=selected?'#177ac0':'#123650';rect(x,y,w,h,7);ctx.fill();ctx.strokeStyle=selected?'#58d8fc':'#47758e';ctx.lineWidth=selected?2.5:1.1;ctx.stroke();
@@ -974,19 +1359,19 @@ function drawSettingsPanel(){
  rect(495,179,686,570,18);ctx.fillStyle='#0a2340f5';ctx.fill();ctx.strokeStyle='#259dda';ctx.lineWidth=2;ctx.stroke();
  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 32px system-ui';ctx.fillText(phase==='loading'?'CARGANDO RECURSOS':phase==='intro'?`PADEL RALLY — ${matchFormat.toUpperCase()}`:help?'COMANDOS Y AJUSTES':'PARTIDA EN PAUSA — AJUSTES',838,247);
  ctx.font='17px system-ui';ctx.fillStyle='#a9cfe8';ctx.fillText('RITMO DE JUEGO',836,292);
- tempos.forEach((v,i)=>settingsButton(505+i*134,307,124,42,v.name,tempoIndex===i));
+ {const bw=88,gap=7,start=505;tempos.forEach((v,i)=>settingsButton(start+i*(bw+gap),307,bw,42,v.name,tempoIndex===i));}
  ctx.fillStyle='#a9cfe8';ctx.fillText('DIFICULTAD DEL ROBOT',836,367);
  skillLevels.forEach((v,i)=>settingsButton(619+i*112,379,105,42,v.name,skillIndex===i));
  if(careerMode){ctx.fillStyle='#ffd978';ctx.font='bold 13px system-ui';ctx.fillText(`CARRERA · PARTIDO ${careerRound}/7 · DIFICULTAD FIJA`,836,444);}
  settingsButton(615,461,214,47,'AMBIENTE REAL: '+(ambientOn?'SÍ':'NO'),ambientOn);
  settingsButton(846,461,214,47,'EFECTOS REALES: '+(sfxOn?'SÍ':'NO'),sfxOn);
  ctx.fillStyle='#d6f2ff';ctx.font='16px system-ui';
- const modeDesc=matchFormat==='2v2'?'TÚ + COMPAÑERO IA contra DOS ROBOTS':matchFormat==='1v1'?'TÚ contra UN ROBOT':matchFormat==='2v1'?'TÚ + COMPAÑERO IA contra UN ROBOT':'TÚ contra DOS ROBOTS';
+ const modeDesc=matchFormat==='3v3'?'TÚ + DOS COMPAÑEROS IA contra TRES ROBOTS':matchFormat==='2v2'?'TÚ + COMPAÑERO IA contra DOS ROBOTS':matchFormat==='1v1'?'TÚ contra UN ROBOT':matchFormat==='2v1'?'TÚ + COMPAÑERO IA contra UN ROBOT':'TÚ contra DOS ROBOTS';
  ctx.fillText(netMode==='offline'?modeDesc:'BLANCO + AMARILLO ONLINE contra DOS ROBOTS',836,535);
  ctx.fillText('Flechas: mover y dirigir    ·    Z: revés    ·    X: derecha',836,557);
  ctx.fillText('C: globo · V: dejada · ESPACIO: remate · S: fondo · A/D: laterales',836,584);
- ctx.fillText('S + A: fondo→izq · S + D: fondo→der · Shift: correr',836,609);
- ctx.fillStyle='#85b3d2';ctx.font='14px system-ui';ctx.fillText('1–3, 8–9 ritmo · 4–7 dificultad · M ambiente · N efectos · F pantalla completa',836,636);
+ ctx.fillText('G: devolución Tapia · E+←/→: X3 · E+↑ (o E): X4 · Shift: correr',836,609);
+ ctx.fillStyle='#85b3d2';ctx.font='14px system-ui';ctx.fillText('F6 EXTERIOR TEST · F7 AUTO REAL · F8 estadísticas · M/N audio · F pantalla completa',836,636);
  settingsButton(698,655,272,54,netMode==='guest'?'ESPERANDO ANFITRIÓN':phase==='intro'?'JUGAR':help?'VOLVER AL PARTIDO':'REANUDAR',true);
  if(phase==='loading'){ctx.fillStyle='#fff';ctx.fillText('Cargando '+loaded+'/'+requested,836,735);}
  ctx.restore();
@@ -1002,18 +1387,19 @@ function tick(dt){
   const d=dt/substeps;
   clock+=d;alertT=Math.max(0,alertT-d);contactMsgT=Math.max(0,contactMsgT-d);hCool=Math.max(0,hCool-d);human.cool=hCool;
   powerBannerT=Math.max(0,powerBannerT-d);
-  stepHuman(d);stepDoublesAI(d);if(remoteActive)stepRemotePartner(d);
+  stepHuman(d);stepDoublesAI(d);if(remoteActive)stepRemotePartner(d);stepAutoHumanActions(d);
   separateTeammates();
   updateBall(phase==='rally'?d*fastBallFactor:d);
   if(queued?.bank)attemptSpecial();else attemptQueued();
-  if(steer&&ball===steer.ref&&clock<steer.until){const a=arrows();if(a.dx||a.dz){ball.vx=steer.vx+(a.dx-steer.base.dx)*1.5;ball.vz=steer.vz+(a.dz-steer.base.dz)*.55;}}
+  if(steer&&ball===steer.ref&&clock<steer.until){const a=autoReal?autoHumanAim():arrows();if(a.dx||a.dz){ball.vx=steer.vx+(a.dx-steer.base.dx)*1.5;ball.vz=steer.vz+(a.dz-steer.base.dz)*.55;}}
   if(steer&&clock>=steer.until)steer=null;
   if(phase==='pointEnd'){pointDelay-=d;if(pointDelay<=0){phase='serveReady';resetPositions();message(serveFaults===1?'SEGUNDO SAQUE':server===0?(servingActor(0)===human?'TU SAQUE · Z O X':'SAQUE DEL COMPAÑERO'):'SAQUE DE LA IA',1.7);}}
  }
 }
 function render(){ctx.clearRect(0,0,W,H);const court=images[courtAsset];if(court?.complete&&court.naturalWidth)ctx.drawImage(court,0,0,W,H);else{ctx.fillStyle='#156ace';ctx.fillRect(0,0,W,H);}drawGuide();
- if(activeActors.has(robot))drawRobotActor(robot);if(activeActors.has(robot2))drawRobotActor(robot2);if(activeActors.has(partner))drawHumanActor(partner);drawHumanActor(human);drawBall();drawTop();drawHUD();
+ if(activeActors.has(robot))drawRobotActor(robot);if(activeActors.has(robot2))drawRobotActor(robot2);if(activeActors.has(robot3))drawRobotActor(robot3);if(activeActors.has(partner))drawHumanActor(partner);if(activeActors.has(partner2))drawHumanActor(partner2);drawHumanActor(human);drawBall();drawTop();drawHUD();
  if(careerMode&&specialMode){ctx.save();ctx.textAlign='right';ctx.font='bold 14px system-ui';ctx.fillStyle='#e9fbff';ctx.shadowColor='#000';ctx.shadowBlur=5;const badge=specialMode==='arctic'?'HIELO':specialMode==='celestial'?'GRAVEDAD REDUCIDA':'PELOTA DE ENERGÍA';ctx.fillText(badge,1580,120);ctx.restore();}
+ if(autoReal){ctx.save();ctx.textAlign='right';ctx.font='bold 15px system-ui';ctx.fillStyle='#7fffd4';ctx.shadowColor='#000';ctx.shadowBlur=6;ctx.fillText('QA · AUTO REAL · F7 DETENER',1580,145);ctx.restore();}
 }
 // The bridge can be used only by online.html (same origin iframe).
 function getSnapshot(){if(netMode!=='host'||phase==='loading')return null;
@@ -1022,7 +1408,7 @@ function getSnapshot(){if(netMode!=='host'||phase==='loading')return null;
   tempoIndex,skillIndex,alert,alertT,boost,robotCharge,robotStamina,serveFaults,remoteActive,powerBannerT,lateralNormal,lateralPower,lastLateralMode,
   power1:charging?clamp((clock-charging.started)/1.15,0,1):queued?.power||0,
   power2:remoteCharge?clamp((clock-remoteCharge.started)/1.15,0,1):remoteQueued?.power||0,
-  human:fields(human),partner:fields(partner),robot:fields(robot),robot2:fields(robot2),
+  human:fields(human),partner:fields(partner),partner2:fields(partner2),robot:fields(robot),robot2:fields(robot2),robot3:fields(robot3),
   ball:ball?{...ball,trail:(ball.trail||[]).slice(-7)}:null,
   audioEvents:audioEvents.slice(-8)};
 }
@@ -1037,7 +1423,7 @@ function applySnapshot(state,seq){
  alert=String(state.alert||'');alertT=Number(state.alertT)||0;powerBannerT=Number(state.powerBannerT)||0;lateralNormal=Number(state.lateralNormal)||0;lateralPower=Number(state.lateralPower)||0;lastLateralMode=String(state.lastLateralMode||'');boost=Number(state.boost)||0;
  robotCharge=Number(state.robotCharge)||0;robotStamina=Number(state.robotStamina)||0;serveFaults=Number(state.serveFaults)||0;
  remoteActive=!!state.remoteActive;netHostPower=Number(state.power1)||0;netRemotePower=Number(state.power2)||0;
- for(const [name,p] of [['human',human],['partner',partner],['robot',robot],['robot2',robot2]]){
+ for(const [name,p] of [['human',human],['partner',partner],['partner2',partner2],['robot',robot],['robot2',robot2],['robot3',robot3]]){
   const o=state[name];if(!o||!Number.isFinite(o.x)||!Number.isFinite(o.z))continue;
   Object.assign(p,o);
  }
@@ -1062,5 +1448,5 @@ window.PadelOnlineBridge={
  debug(){return{mode:netMode,remoteActive,remoteButtons:{...remoteButtons},remoteCharge,remoteQueued,guestSnapshotSeq};}
 };
 function loop(t){const dt=last?(t-last)/1000:0;last=t;tick(dt);musicLoop();render();requestAnimationFrame(loop);}requestAnimationFrame(loop);
-window.__padelDebug=()=>({mode:matchFormat,phase,paused,help,clock,loaded,requested,errors,server,nearServerMember,farServerMember,servingActor:servingActor().id,allyAttempted,robotAttempted,lastInterception,roster:[...members[0],...members[1]].map(p=>({id:p.id,team:p.team,x:p.x,z:p.z,cool:p.cool,moving:p.moving})),score:[score(0),score(1)],games:[...games],rally,longestRally,serveFaults,pointInGame,servingSide:pointInGame%2===0?'DERECHA':'IZQUIERDA',boost,robotStamina,lastBank,lastLateralMode,lateralNormal,lateralPower,powerBannerT,showShotStats,partnerVisual:{motion:partner.motion,visualFacing:partner.visualFacing,visualPending:partner.visualPending,stridePhase:partner.stridePhase,frameT:partner.frameT,recoverT:partner.recoverT,splitStepT:partner.splitStepT,visualSpeed:partner.visualSpeed},ball:ball?{x:ball.x,z:ball.z,h:ball.h,vx:ball.vx,vz:ball.vz,vh:ball.vh,lastHit:ball.lastHit,bounces:ball.bounces,serveFlight:ball.serveFlight,bank:ball.bank,bankRoute:ball.bankRoute,bankStage:ball.bankStage,wallCount:ball.wallCount}:null,human:{x:human.x,z:human.z,motion:human.motion,visualFacing:human.visualFacing,visualPending:human.visualPending,visualBlendT:human.visualBlendT,stridePhase:human.stridePhase,height:215*project(human.x,human.z).scale},robot:{x:robot.x,z:robot.z,motion:robot.motion},tempo:tempos[tempoIndex].name,tempoScale:tempos[tempoIndex].scale,skill:skillLevels[skillIndex].name,skillParams:skillLevels[skillIndex],ambientOn,sfxOn,robotAttempted,partnerLane,playerSeparation:hypot(partner.x-human.x,partner.z-human.z),lastRobotTarget,robotAimWhite,robotAimYellow,nearChaseOwner:nearChaseOwner?.id||null,nearChaseSwitches,a48Enabled,a48Facing:human.visualFacing,a48BankRoute:human.visualBankRoute||null,whiteJump:human.jumpT||0,yellowJump:partner.jumpT||0,ballSpeedFactor:(tempos[tempoIndex].ballScale||tempos[tempoIndex].scale)/tempos[tempoIndex].scale,velocity:{vx:human.vx,vz:human.vz},charging:charging?.shot||null,queued:queued?.shot||null,queuedRoute:queued?.route||null});
+window.__padelDebug=()=>({mode:matchFormat,exteriorTest:{door:[DOOR_Z_MIN,DOOR_Z_MAX],outerX:OUTER_X,innerX:[PLAYER_LEFT_X,PLAYER_RIGHT_X],humanOutside:actorOutside(human),ballOutside:ballOutside(ball),accessOpen:exteriorAccessOpen(0)},autoReal,phase,paused,help,clock,loaded,requested,errors,server,nearServerMember,farServerMember,servingActor:servingActor().id,allyAttempted,robotAttempted,lastInterception,roster:[...members[0],...members[1]].map(p=>({id:p.id,team:p.team,x:p.x,z:p.z,cool:p.cool,moving:p.moving})),score:[score(0),score(1)],games:[...games],rally,longestRally,serveFaults,pointInGame,servingSide:pointInGame%2===0?'DERECHA':'IZQUIERDA',boost,robotStamina,lastBank,lastLateralMode,lateralNormal,lateralPower,powerBannerT,showShotStats,partnerVisual:{motion:partner.motion,visualFacing:partner.visualFacing,visualPending:partner.visualPending,stridePhase:partner.stridePhase,frameT:partner.frameT,recoverT:partner.recoverT,splitStepT:partner.splitStepT,visualSpeed:partner.visualSpeed},ball:ball?{x:ball.x,z:ball.z,h:ball.h,vx:ball.vx,vz:ball.vz,vh:ball.vh,lastHit:ball.lastHit,bounces:ball.bounces,serveFlight:ball.serveFlight,bank:ball.bank,bankRoute:ball.bankRoute,bankStage:ball.bankStage,wallCount:ball.wallCount,exitQuality:ball.exitTest?.quality??null}:null,tapiaGuard:tapiaGuard?{activeFrom:tapiaGuard.activeFrom,until:tapiaGuard.until}:null,human:{x:human.x,z:human.z,motion:human.motion,visualFacing:human.visualFacing,visualPending:human.visualPending,visualBlendT:human.visualBlendT,stridePhase:human.stridePhase,height:215*project(human.x,human.z).scale},robot:{x:robot.x,z:robot.z,motion:robot.motion},tempo:tempos[tempoIndex].name,tempoScale:tempos[tempoIndex].scale,skill:skillLevels[skillIndex].name,skillParams:skillLevels[skillIndex],ambientOn,sfxOn,robotAttempted,partnerLane,playerSeparation:hypot(partner.x-human.x,partner.z-human.z),lastRobotTarget,robotAimWhite,robotAimYellow,nearChaseOwner:nearChaseOwner?.id||null,nearChaseSwitches,a48Enabled,a48Facing:human.visualFacing,a48BankRoute:human.visualBankRoute||null,whiteJump:human.jumpT||0,yellowJump:partner.jumpT||0,ballSpeedFactor:(tempos[tempoIndex].ballScale||tempos[tempoIndex].scale)/tempos[tempoIndex].scale,velocity:{vx:human.vx,vz:human.vz},charging:charging?.shot||null,queued:queued?.shot||null,queuedRoute:queued?.route||null});
 })();

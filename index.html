@@ -8,9 +8,9 @@ body{display:grid;place-items:center}
 #stage{position:relative;aspect-ratio:1672/941;width:min(100vw,calc(100dvh * 1672 / 941));height:auto;max-height:100dvh;overflow:hidden;background:#061329;isolation:isolate}
 #art{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
 #menu{position:absolute;inset:0;z-index:2}
-/* Baked-in lettering and old highlight are hidden only below the logo;
-   the approved stadium/court artwork remains unchanged. */
-#menu::before{content:"";position:absolute;left:2.1%;top:28.9%;width:33.2%;height:66.5%;background:linear-gradient(90deg,#061324 0%,#06152b 96%,#06152b 100%);pointer-events:none}
+/* The approved menu artwork still contains legacy baked-in options. Keep a
+   permanent mask over that zone so they stay hidden even while a modal is open. */
+#stage::after{content:"";position:absolute;left:2.1%;top:28.9%;width:33.2%;height:66.5%;background:linear-gradient(90deg,#061324 0%,#06152b 96%,#06152b 100%);pointer-events:none;z-index:1}
 .menu-button{position:absolute;left:2.45%;width:31.9%;display:flex;align-items:center;gap:3%;text-align:left;padding:0 2.3%;border:1px solid transparent;background:transparent;color:#eaf5ff;border-radius:7px;cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s;z-index:1}
 .menu-button .menu-icon{width:15%;font-size:clamp(17px,2vw,34px);font-family:Segoe UI Symbol,Arial,sans-serif;text-align:center;color:#f6fbff;flex-shrink:0;font-weight:400}
 .menu-button .menu-icon svg{width:70%;height:70%;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;fill:none}
@@ -28,18 +28,20 @@ body{display:grid;place-items:center}
 [hidden]{display:none!important}
 #intro{position:absolute;inset:0;background:#010511;z-index:15;display:grid;place-items:center}
 #intro-video{width:100%;height:100%;object-fit:contain;background:#02040a}
-.intro-actions{position:absolute;top:3%;right:3%;display:flex;gap:9px;align-items:center}
+.intro-actions{position:absolute;top:3%;right:3%;display:flex;gap:9px;align-items:center;z-index:3}
 .ui-button{background:#0b2e4fe8;border:1px solid #5bb8f5;color:white;border-radius:7px;padding:11px 16px;cursor:pointer;font:600 14px system-ui,Segoe UI,sans-serif;letter-spacing:.02em}
 .ui-button:hover,.ui-button:focus-visible{background:#155e91;outline:1px solid #b3eeff}
-#play-intro-message{position:absolute;inset:0;display:grid;place-items:center;background:#061225bc}
-#play-intro-message .start-card{padding:24px;background:#071b31f5;border:1px solid #448dc4;border-radius:15px;text-align:center;max-width:400px;line-height:1.65}
-#play-intro-message p{color:#bad5e6}
+#play-intro-message{position:absolute;inset:0;display:grid;place-items:center;background:#020713d9;cursor:pointer;z-index:2}
+#play-intro-message .start-card{padding:28px 34px;background:#071b31e8;border:1px solid #448dc4;border-radius:15px;text-align:center;max-width:520px;line-height:1.55;box-shadow:0 18px 70px #000c}
+#play-intro-message h2{margin:0 0 13px;font-size:clamp(28px,3vw,46px);font-style:italic;letter-spacing:.05em}
+#play-intro-message p{margin:0;color:#e9f8ff;font-weight:850;letter-spacing:.08em;font-size:clamp(15px,1.4vw,22px)}
+#play-intro-message small{display:block;margin-top:10px;color:#86bad7;font-size:13px}
 #overlay{position:absolute;inset:0;z-index:7;display:grid;place-items:center;background:#020a17a6;backdrop-filter:blur(1px);padding:3%}
 .panel{width:min(610px,90%);max-height:94%;overflow:auto;border:1px solid #3cabe6;background:linear-gradient(150deg,#102945f7,#061323f8);box-shadow:0 15px 60px #000b;border-radius:15px;padding:25px 30px}
 .panel h1{font-size:clamp(21px,2vw,30px);margin:0 0 6px;letter-spacing:.05em}
 .panel p{color:#abcce2;line-height:1.5;margin:8px 0 19px}
 .panel label{display:block;margin:14px 0 5px;color:#d8edff;font-weight:600}
-.panel select{width:100%;padding:12px;background:#13334f;border:1px solid #4082ac;border-radius:7px;color:white;font:inherit}
+.panel select,.panel input[type=text]{width:100%;padding:12px;background:#13334f;border:1px solid #4082ac;border-radius:7px;color:white;font:inherit}
 .panel .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0}
 .panel .toggle-row label{margin:0}.panel input[type=checkbox]{height:20px;width:20px;accent-color:#16a7ef}
 .panel .buttons{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start;margin-top:18px}
@@ -62,46 +64,54 @@ body{display:grid;place-items:center}
 @media(max-width:740px){#padel-ctrl-grid{grid-template-columns:1fr}#padel-controls-dialog section{padding:12px 15px}#padel-controls-dialog header strong{font-size:16px}}
 
 
-.format-choices{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:15px 0}
-.format-choice{padding:17px 10px;border-radius:9px;border:1px solid #4784aa;background:#102f49;color:#fff;font:800 18px system-ui;cursor:pointer}
+#quick-panel{width:min(680px,92%);padding:17px 22px;max-height:91%}
+#quick-panel h1{margin-bottom:3px}
+#quick-panel p{font-size:14px;line-height:1.35;margin:4px 0 10px}
+.format-choices{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}
+.format-choice{padding:9px 5px;border-radius:8px;border:1px solid #4784aa;background:#102f49;color:#fff;font:800 14px system-ui;cursor:pointer}
 .format-choice:hover,.format-choice.selected{background:#126fa8;border-color:#65d7ff;box-shadow:0 0 18px #12aefe44}
-.quick-court-wrap{margin:15px 0 4px}
-.quick-court-wrap label{margin:0 0 6px}
-#quick-court-preview{width:100%;aspect-ratio:1672/941;object-fit:cover;border:1px solid #3d7293;border-radius:9px;background:#061422;display:block;margin-top:9px}
-.quick-court-note{display:block;margin-top:6px;color:#8fc8e7;font-size:12px;min-height:16px}
+.quick-config-grid{display:grid;grid-template-columns:minmax(180px,.72fr) minmax(240px,1.28fr);gap:10px;align-items:end;margin:8px 0 2px}
+.quick-config-grid label{margin:0 0 4px}
+.quick-court-wrap{margin:0}
+#quick-panel select,#quick-panel input[type=text]{padding:9px}
+@media(max-width:620px){.quick-config-grid{grid-template-columns:1fr}}
+#quick-court-preview{width:100%;height:150px;object-fit:cover;border:1px solid #3d7293;border-radius:8px;background:#061422;display:block;margin-top:6px}
+.quick-court-note{display:block;margin-top:4px;color:#8fc8e7;font-size:11px;min-height:14px}
+#quick-panel .buttons{margin-top:9px}
 </style></head>
 <body><main id="stage" aria-label="PADEL RALLY">
 <img id="art" src="assets/menu_aprobado.png" alt="Cancha futurista de pádel con dos humanos, dos robots y el menú principal">
 <nav id="menu" aria-label="Menú principal" hidden>
 <button class="menu-button active" data-target="career" aria-label="Modo carrera" title="Modo carrera"><span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v6a5 5 0 0 1-10 0zM12 15v5M8 21h8M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4"/></svg></span><span class="menu-copy"><strong>MODO CARRERA</strong><small>ACÁ EMPEZÁS A HACER HISTORIA</small></span><span class="menu-arrow" aria-hidden="true">›</span></button>
-<button class="menu-button" data-target="quick" aria-label="Juego rápido" title="Juego rápido"><span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="11.5" cy="8" rx="5.8" ry="6.8" transform="rotate(-24 11.5 8)"/><path d="m14.4 13.7 5.5 7.6M10 3.3l5.6 9.5M8.3 5.7l6.5 3.8M7.3 9l6.8 4"/></svg></span><span class="menu-copy"><strong>JUEGO RÁPIDO</strong><small>2V2 · 1V1 · 2V1 · 1V2</small></span><span class="menu-arrow" aria-hidden="true">›</span></button>
+<button class="menu-button" data-target="quick" aria-label="Juego rápido" title="Juego rápido"><span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="11.5" cy="8" rx="5.8" ry="6.8" transform="rotate(-24 11.5 8)"/><path d="m14.4 13.7 5.5 7.6M10 3.3l5.6 9.5M8.3 5.7l6.5 3.8M7.3 9l6.8 4"/></svg></span><span class="menu-copy"><strong>JUEGO RÁPIDO</strong><small>2V2 · 1V1 · 2V1 · 1V2 · 3V3 TEST</small></span><span class="menu-arrow" aria-hidden="true">›</span></button>
 <button class="menu-button" data-target="settings" aria-label="Opciones" title="Opciones"><span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m10 2-.6 2.5-2 1L5 4.8 2.8 8.5 4.7 10v4l-1.9 1.5L5 19.2l2.4-.7 2 1L10 22h4l.6-2.5 2-1 2.4.7 2.2-3.7L19.3 14v-4l1.9-1.5L19 4.8l-2.4.7-2-1L14 2z"/></svg></span><span class="menu-copy"><strong>OPCIONES</strong><small>AJUSTA TU EXPERIENCIA</small></span><span class="menu-arrow" aria-hidden="true">›</span></button>
 <button class="menu-button" data-target="credits" aria-label="Créditos y agradecimientos" title="Créditos y agradecimientos"><span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3.1 6.5 7.1 1-5.1 4.9 1.2 7-6.3-3.4-6.3 3.4 1.2-7-5.1-4.9 7.1-1z"/></svg></span><span class="menu-copy"><strong>CRÉDITOS</strong><small>EQUIPO Y AGRADECIMIENTOS</small></span><span class="menu-arrow" aria-hidden="true">›</span></button>
 </nav>
 <div id="intro"><video id="intro-video" playsinline preload="metadata" poster="assets/menu_aprobado.png"><source src="assets/intro_720.mp4" type="video/mp4"></video>
-<div class="intro-actions"><button class="ui-button" id="toggle-audio" type="button" hidden>ACTIVAR SONIDO</button><button class="ui-button" id="skip" type="button">SALTAR INTRO</button></div>
-<div id="play-intro-message" hidden><div class="start-card"><h2>PADEL RALLY</h2><p>El navegador necesita que inicies la reproducción con sonido.</p><button class="ui-button" id="start-intro" type="button">REPRODUCIR INTRO</button></div></div>
+<div class="intro-actions"><button class="ui-button" id="skip" type="button">SALTAR INTRO</button></div>
+<div id="play-intro-message"><div class="start-card"><h2>PADEL RALLY</h2><p>PRESIONÁ CUALQUIER TECLA PARA COMENZAR</p><small>La intro comenzará desde el inicio con sonido.</small></div></div>
 </div>
 <div id="overlay" hidden>
 <section class="panel" id="quick-panel" hidden role="dialog" aria-modal="true" aria-label="Juego rápido">
-<h1>JUEGO RÁPIDO</h1><p>Elegí la composición del partido. La física, los golpes y la cámara son los mismos en las cuatro modalidades.</p>
+<h1>JUEGO RÁPIDO</h1><p>Elegí la composición del partido. La física, los golpes y la cámara son los mismos. 3 vs 3 es un prototipo experimental.</p>
 <div class="format-choices">
 <button class="format-choice selected" data-format="2v2" type="button">2 vs 2</button>
 <button class="format-choice" data-format="1v1" type="button">1 vs 1</button>
 <button class="format-choice" data-format="2v1" type="button">2 vs 1</button>
 <button class="format-choice" data-format="1v2" type="button">1 vs 2</button>
+<button class="format-choice" data-format="3v3" type="button">3 vs 3 TEST</button>
 </div>
-<div class="quick-court-wrap">
-<label for="quick-court">Cancha</label>
-<select id="quick-court" aria-label="Elegir cancha para Juego Rápido"></select>
+<div class="quick-config-grid">
+<div><label for="quick-player">Nombre del jugador blanco</label><input id="quick-player" type="text" maxlength="12" autocomplete="off" spellcheck="false" placeholder="P1"></div>
+<div class="quick-court-wrap"><label for="quick-court">Cancha</label><select id="quick-court" aria-label="Elegir cancha para Juego Rápido"></select></div>
+</div>
 <img id="quick-court-preview" src="assets/court_clean.png" alt="Vista previa de la cancha seleccionada">
 <small class="quick-court-note" id="quick-court-note"></small>
-</div>
 <div class="buttons"><button class="ui-button" id="start-quick" type="button">JUGAR</button><button class="ui-button secondary" data-close type="button">VOLVER</button></div>
 </section>
 <section class="panel" id="settings-panel" hidden role="dialog" aria-modal="true" aria-label="Opciones del juego">
 <h1>OPCIONES</h1><p>Configuración del próximo partido. Las teclas pueden personalizarse y guardarse en el navegador.</p>
-<label for="tempo">Velocidad de juego</label><select id="tempo"><option value="0">Lento</option><option value="1">Normal</option><option value="2">Rápido</option><option value="3">Muy rápido</option><option value="4">Extremo</option></select>
+<label for="tempo">Velocidad de juego</label><select id="tempo"><option value="0">Lento</option><option value="1">Normal</option><option value="2">Rápido</option><option value="3">Muy rápido</option><option value="4">Extremo</option><option value="5">Turbo</option><option value="6">Insano</option></select>
 <label for="skill">Dificultad de los robots</label><select id="skill"><option value="0">Fácil</option><option value="1">Medio</option><option value="2">Difícil</option><option value="3">Experto</option></select>
 <div class="toggle-row"><label for="ambiente">Ambiente de cancha</label><input type="checkbox" id="ambiente" checked></div>
 <div class="toggle-row"><label for="efectos">Efectos de sonido</label><input type="checkbox" id="efectos" checked></div>
@@ -121,10 +131,10 @@ body{display:grid;place-items:center}
 <script>
 (()=>{'use strict';
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
-const defaults={tempo:'1',skill:'1',ambiente:true,efectos:true,quickCourt:'original'},storeKey='padel-rally-main-options-v1';
+const defaults={tempo:'1',skill:'1',ambiente:true,efectos:true,quickCourt:'original',quickPlayer:'P1'},storeKey='padel-rally-main-options-v1';
 let settings={...defaults};
 try{const saved=JSON.parse(localStorage.getItem(storeKey));if(saved&&typeof saved==='object')settings={...settings,...saved};}catch(_){}
-if(!['0','1','2','3','4'].includes(String(settings.tempo)))settings.tempo='1';
+if(!['0','1','2','3','4','5','6'].includes(String(settings.tempo)))settings.tempo='1';
 if(!['0','1','2','3'].includes(String(settings.skill)))settings.skill='1';
 function persist(){try{localStorage.setItem(storeKey,JSON.stringify(settings));}catch(_){}}
 function showMenu(){const v=$('#intro-video');v.pause();$('#intro').hidden=true;$('#menu').hidden=false;$('#play-intro-message').hidden=true;}
@@ -139,21 +149,23 @@ const quickCourts=[
  {id:'indoor_naranja',name:'Indoor Naranja',court:'assets/courts/indoor_naranja.png'},
  {id:'eco',name:'Biofuturista / Eco',court:'assets/courts/eco.png'},
  {id:'steampunk',name:'Steampunk',court:'assets/courts/steampunk.png'},
- {id:'neon',name:'Neón Azul',court:'assets/courts/neon.png'},
+ {id:'neon',name:'Neón Azul',court:'assets/courts/neon.png',special:'neon',note:'Especial: pelota neón luminosa'},
  {id:'celestial',name:'Celestial',court:'assets/courts/celestial.png',special:'celestial',note:'Especial: gravedad reducida'},
  {id:'cyberpunk',name:'Cyberpunk',court:'assets/courts/cyberpunk.png',special:'cyber',note:'Especial: pelota de energía con estela'},
  {id:'artica',name:'Ártica',court:'assets/courts/artica.png',special:'arctic',note:'Especial: superficie de hielo'},
  {id:'prehistoria',name:'Prehistoria / Caverna',court:'assets/courts/prehistoria_bonus.png'}
 ];
-const quickCourtSelect=$('#quick-court'),quickCourtPreview=$('#quick-court-preview'),quickCourtNote=$('#quick-court-note');
+const quickCourtSelect=$('#quick-court'),quickCourtPreview=$('#quick-court-preview'),quickCourtNote=$('#quick-court-note'),quickPlayer=$('#quick-player');
+const quickRivalPool=['OMEGA','BETA','PULSE','FLUX','TYTAN','TITAN','NOVA','PULSAR','ATTACK','FORCE','RAZOR','BLADE','FIVE','TECNO','AGI','RAG','VEKTOR','INFINIT','RAW','XX2','ECHO','SONAR','BYTE','BIT','NEON','ION','ALPHA','SIGMA'];
+function randomRivals(n){const a=[...quickRivalPool];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a.slice(0,n);}
 for(const c of quickCourts){const o=document.createElement('option');o.value=c.id;o.textContent=c.name;quickCourtSelect.append(o);}
 if(!quickCourts.some(c=>c.id===settings.quickCourt))settings.quickCourt='original';
 function selectedQuickCourt(){return quickCourts.find(c=>c.id===settings.quickCourt)||quickCourts[0];}
 function syncQuickCourt(){const c=selectedQuickCourt();quickCourtSelect.value=c.id;quickCourtPreview.src=c.court;quickCourtPreview.alt=`Vista previa: ${c.name}`;quickCourtNote.textContent=c.note||'';}
 quickCourtSelect.addEventListener('change',()=>{settings.quickCourt=quickCourtSelect.value;syncQuickCourt();persist();});
 let quickFormat='2v2';
-function openQuick(){syncSettings();syncQuickCourt();openPanel('quick-panel');}
-function launchQuick(){persist();const c=selectedQuickCourt();const p=new URLSearchParams({fromMenu:'1',format:quickFormat,tempo:String(settings.tempo),skill:String(settings.skill),ambiente:settings.ambiente?'1':'0',efectos:settings.efectos?'1':'0',court:c.court});if(c.special)p.set('special',c.special);location.href='partido.html?'+p;}
+function openQuick(){syncSettings();syncQuickCourt();quickPlayer.value=(settings.quickPlayer||'P1').slice(0,12);openPanel('quick-panel');}
+function launchQuick(){settings.quickPlayer=(quickPlayer.value||'P1').trim().slice(0,12)||'P1';persist();const c=selectedQuickCourt();const rivals=randomRivals(quickFormat==='3v3'?3:quickFormat==='1v1'||quickFormat==='2v1'?1:2);const p=new URLSearchParams({fromMenu:'1',format:quickFormat,tempo:String(settings.tempo),skill:String(settings.skill),ambiente:settings.ambiente?'1':'0',efectos:settings.efectos?'1':'0',court:c.court,player:settings.quickPlayer,opp1:rivals[0]||'IA1',opp2:rivals[1]||'IA2',opp3:rivals[2]||'IA3'});if(c.special)p.set('special',c.special);location.href='partido.html?'+p;}
 const actions={career:()=>{persist();location.href='carrera.html';},quick:openQuick,settings:()=>{syncSettings();openPanel('settings-panel');},credits:()=>openPanel('credits-panel')};
 function showNote(title,text){$('#note-heading').textContent=title;$('#note-text').textContent=text;openPanel('note-panel');}
 $$('.menu-button').forEach(b=>{
@@ -162,6 +174,7 @@ $$('.menu-button').forEach(b=>{
  b.addEventListener('pointerenter',activate);b.addEventListener('focus',activate);
 });
 $$('.format-choice').forEach(b=>b.addEventListener('click',()=>{quickFormat=b.dataset.format;$$('.format-choice').forEach(x=>x.classList.toggle('selected',x===b));}));
+quickPlayer.addEventListener('change',()=>{settings.quickPlayer=(quickPlayer.value||'P1').trim().slice(0,12)||'P1';quickPlayer.value=settings.quickPlayer;persist();});
 $('#start-quick').addEventListener('click',launchQuick);
 $$('#overlay [data-close]').forEach(b=>b.addEventListener('click',closePanel));
 for(const k of ['tempo','skill'])$('#'+k).addEventListener('change',e=>{settings[k]=e.target.value;persist();});
@@ -169,22 +182,30 @@ for(const k of ['ambiente','efectos'])$('#'+k).addEventListener('change',e=>{set
 $('#edit-controls').addEventListener('click',()=>$('#padel-control-launcher').click());
 // Reuse the exact remapping dialog from the game, with no duplicated key bindings.
 const launcher=document.createElement('button');launcher.id='padel-control-launcher';launcher.hidden=true;document.body.append(launcher);PadelControls.mount(launcher);
-window.addEventListener('keydown',e=>{if(e.code==='Escape'&&!PadelControls.visible()){
- if(!$('#intro').hidden){showMenu();e.preventDefault();}
- else if(!$('#overlay').hidden){closePanel();e.preventDefault();}
-}});
-const video=$('#intro-video');let introDone=false;
+const video=$('#intro-video');let introDone=false,introStarted=false;
 function finishIntro(){if(introDone)return;introDone=true;showMenu();}
+async function beginIntro(){
+ if(introDone||introStarted||$('#intro').hidden)return;
+ introStarted=true;video.preload='auto';video.muted=false;try{video.currentTime=0;}catch(_){}
+ $('#play-intro-message').hidden=true;
+ try{await video.play();}
+ catch(_){introStarted=false;$('#play-intro-message').hidden=false;}
+}
+window.addEventListener('keydown',e=>{
+ if(!$('#intro').hidden&&!introStarted&&!introDone&&!PadelControls.visible()){
+  e.preventDefault();beginIntro();return;
+ }
+ if(e.code==='Escape'&&!PadelControls.visible()){
+  if(!$('#intro').hidden){showMenu();e.preventDefault();}
+  else if(!$('#overlay').hidden){closePanel();e.preventDefault();}
+ }
+});
+$('#play-intro-message').addEventListener('click',beginIntro);
 $('#skip').addEventListener('click',finishIntro);
-$('#start-intro').addEventListener('click',async()=>{video.muted=false;$('#play-intro-message').hidden=true;try{await video.play();}catch(e){video.muted=true;try{await video.play();}catch(_){} }});
-$('#toggle-audio').addEventListener('click',()=>{video.muted=false;$('#toggle-audio').hidden=true;});
 video.addEventListener('ended',finishIntro);
 video.addEventListener('error',finishIntro);
-video.addEventListener('stalled',()=>{if(video.readyState===0)$('#play-intro-message').hidden=false;});
-async function startIntro(){if(new URLSearchParams(location.search).get('skipintro')==='1'){finishIntro();return;}
- video.preload='auto';try{video.muted=false;await video.play();}
- catch(_){try{video.muted=true;await video.play();$('#toggle-audio').hidden=false;}
- catch(_){$('#play-intro-message').hidden=false;}}
+function startIntro(){if(new URLSearchParams(location.search).get('skipintro')==='1'){finishIntro();return;}
+ video.pause();video.muted=false;try{video.currentTime=0;}catch(_){}$('#play-intro-message').hidden=false;
 }
 startIntro();
 })();
