@@ -253,7 +253,7 @@ function readCareerStartEnergy(){
 let careerEnergyStart=readCareerStartEnergy();
 function resetPositions(){
  const side=pointInGame%2===0?1:-1;
- for(const p of [human,partner,partner2,robot,robot2,robot3]){p.pose=0;p.frameT=0;p.moving=false;p.dx=0;p.cool=0;p.thinking=0;p.charge=0;p.ivx=0;p.ivz=0;p.motion=p.team===0?'idle':'ready';}
+ for(const p of [human,partner,partner2,robot,robot2,robot3]){p.pose=0;p.frameT=0;p.moving=false;p.dx=0;p.cool=0;p.thinking=0;p.charge=0;p.ivx=0;p.ivz=0;p.motion=p.team===0?'idle':'ready';p.visualReachX=0;p.visualHitHeight=1;}
  const ns=servingActor(0),fs=servingActor(1);
  const nf=members[0].find(x=>x!==ns)||null,ff=members[1].find(x=>x!==fs)||null;
  if(is3v3){
@@ -397,7 +397,7 @@ b.serveFlight=true;b.serveSide=d.side;b.lastVisualServeShot=d.visualShot||'foreh
 phase='rally';rally=1;robotAttempted=false;allyAttempted=false;autoHumanAttempted=false;
 fx('pala',{who,power:d.power,shot:'forehand'});
 const serverActor=members[who].find(p=>p.id===d.actor)||servingActor(who);
-serverActor.motion='forehand';serverActor.pose=.42;serverActor.frameT=0;serverActor.cool=.35;
+serverActor.motion='forehand';serverActor.pose=.42;serverActor.frameT=0;serverActor.cool=.35;serverActor.visualReachX=0;serverActor.visualHitHeight=.85;
 if(serverActor===human)hCool=.35; if(serverActor===robot)rCool=.35;
 
 message('SAQUE EJECUTADO',.5);}
@@ -548,7 +548,7 @@ if(!bank){
   }
  }else{
   const nearAI=p.team===0;
-  p.motion=nearAI?(bank?'glass':shot==='smash'?'smash':shot==='backhand'?'backhand':'forehand'):(shot==='backhand'?'backhand':'forehand');p.pose=.42;p.cool=.42;p.frameT=0;
+  p.motion=nearAI?(bank?'glass':shot==='smash'?'smash':shot==='backhand'?'backhand':'forehand'):(shot==='smash'?'smash':shot==='lob'?'lob':shot==='backhand'?'backhand':'forehand');p.pose=.42;p.cool=.42;p.frameT=0;p.visualReachX=dx;p.visualHitHeight=b.h;
   p.charge=powerC;
   if(nearAI&&!bank&&shot==='smash'){p.jumpDuration=.42;p.jumpT=p.jumpDuration;}
   if(p.team===1){robotThinking=0;robotCharge=powerC;}else {message('COMPAÑERO DEVUELVE · '+label[shot],.55);}
@@ -1030,6 +1030,8 @@ function stepDoublesAI(dt){
     if(incoming&&p.splitArmed&&!p.moving&&p.pose<=0&&incoming.z>=7.4&&incoming.z<=11){p.splitStepT=.15;p.splitArmed=false;}
     p.motion=p.pose>0?p.motion:p.moving?(Math.abs(dx)>Math.abs(dz)?dx>0?'run_right':'run_left':dz>0?'forward':'backward'):'idle';
     stabilizeYellowFacing(p,dt);
+   }else if(p.team===1&&p.pose<=0){
+    p.motion=p.moving?(Math.abs(dx)>Math.abs(dz)?dx>0?'run_right':'run_left':dz>0?'forward':'backward'):'ready';
    }
   }
   // Allow exactly one AI return attempt per incoming ball on each side.
@@ -1268,15 +1270,57 @@ function drawHumanActor(p,which){
  ctx.restore();
  drawTag(pr.x,pr.y+15,p.id,p===human?'#35d8ff':'#ffe14f');
 }
+const ROBOT_V2_ATLAS_KEY='robot-v2-atlas',ROBOT_V2_COLS=5,ROBOT_V2_CELL_W=240,ROBOT_V2_CELL_H=204;
+const ROBOT_V2_FRAME={
+ backhandFollow:0,backhandPrepare:1,backhand:2,forehandPrepare:3,forehandFollow:4,forehand:5,
+ moveLeft1:6,moveLeft2:7,moveRight1:8,moveRight2:9,ready1:10,ready2:11,ready3:12,ready:13,
+ diagonalLeft:14,diagonalRight1:15,diagonalRight2:16,diagonalRight:17,realistic:18,
+ runLeft1:19,runLeft2:20,runRight1:21,runRight2:22,sliceLeft:23,sliceRight:24,
+ stretchLeft2:25,stretchLeft:26,stretchRight2:27,stretchRight:28
+};
+function selectRobotV2Frame(p){
+ if(p.pose>0){
+  const progress=clamp((.42-p.pose)/.42,0,1),reach=Number(p.visualReachX)||0,hitH=Number(p.visualHitHeight)||1;
+  if(Math.abs(reach)>.82){
+   if(reach<0)return progress<.55?ROBOT_V2_FRAME.stretchLeft:ROBOT_V2_FRAME.stretchLeft2;
+   return progress<.55?ROBOT_V2_FRAME.stretchRight:ROBOT_V2_FRAME.stretchRight2;
+  }
+  if(hitH<.52)return reach<0?ROBOT_V2_FRAME.sliceLeft:ROBOT_V2_FRAME.sliceRight;
+  if(p.motion==='backhand')return progress<.30?ROBOT_V2_FRAME.backhandPrepare:progress<.68?ROBOT_V2_FRAME.backhand:ROBOT_V2_FRAME.backhandFollow;
+  if(p.motion==='smash')return progress<.34?ROBOT_V2_FRAME.diagonalRight:progress<.72?ROBOT_V2_FRAME.forehand:ROBOT_V2_FRAME.forehandFollow;
+  if(p.motion==='lob')return reach<0?ROBOT_V2_FRAME.sliceLeft:ROBOT_V2_FRAME.sliceRight;
+  return progress<.30?ROBOT_V2_FRAME.forehandPrepare:progress<.68?ROBOT_V2_FRAME.forehand:ROBOT_V2_FRAME.forehandFollow;
+ }
+ if(p.moving){
+  const step=Math.floor(p.frameT*ROBOT_RUN_FPS)%4;
+  if(p.motion==='run_left')return [ROBOT_V2_FRAME.runLeft1,ROBOT_V2_FRAME.moveLeft1,ROBOT_V2_FRAME.runLeft2,ROBOT_V2_FRAME.moveLeft2][step];
+  if(p.motion==='run_right')return [ROBOT_V2_FRAME.runRight1,ROBOT_V2_FRAME.moveRight1,ROBOT_V2_FRAME.runRight2,ROBOT_V2_FRAME.moveRight2][step];
+  if(p.motion==='forward')return [ROBOT_V2_FRAME.diagonalRight1,ROBOT_V2_FRAME.diagonalRight2,ROBOT_V2_FRAME.diagonalLeft,ROBOT_V2_FRAME.diagonalRight][step];
+  if(p.motion==='backward')return [ROBOT_V2_FRAME.diagonalLeft,ROBOT_V2_FRAME.diagonalRight2,ROBOT_V2_FRAME.diagonalLeft,ROBOT_V2_FRAME.diagonalRight1][step];
+  return p.dx>=0?ROBOT_V2_FRAME.moveRight1:ROBOT_V2_FRAME.moveLeft1;
+ }
+ if(phase==='serveReady'&&servingActor(1)===p)return ROBOT_V2_FRAME.realistic;
+ const offset=p===robot?0:p===robot2?1:2;
+ return [ROBOT_V2_FRAME.ready,ROBOT_V2_FRAME.ready1,ROBOT_V2_FRAME.ready2,ROBOT_V2_FRAME.ready3][Math.floor(clock*.82+offset)%4];
+}
 function drawRobotActor(p){
- let name='robot-ready-clean';
- if(p.pose>0)name=p.motion==='backhand'?'robot-backhand-clean':'robot-forehand-clean';
- else if(p.moving){const files=p.dx>0?['robot-run-right-a','robot-run-right-b']:['robot-run-left-a','robot-run-left-b'];name=files[Math.floor(p.frameT*ROBOT_RUN_FPS)%2];}
- const im=images[assets.robot[name]||assets.robot['robot-ready-clean']];if(!im?.complete||!im.naturalWidth)return;
- const pr=project(p.x,p.z),height=196*pr.scale,width=height*(im.width/im.height);
- ctx.save();if(p===robot2){ctx.filter='hue-rotate(135deg) saturate(1.3)';}else if(p===robot3){ctx.filter='hue-rotate(245deg) saturate(1.25)';}
- ctx.drawImage(im,pr.x-width/2,pr.y-height,width,height);ctx.restore();
- // Rival names stay clear of the net: smaller and above the robot silhouette.
+ const atlasPath=assets.robot[ROBOT_V2_ATLAS_KEY],atlas=atlasPath&&images[atlasPath];
+ const pr=project(p.x,p.z),height=196*pr.scale;
+ ctx.save();
+ if(p===robot2)ctx.filter='hue-rotate(135deg) saturate(1.3)';
+ else if(p===robot3)ctx.filter='hue-rotate(245deg) saturate(1.25)';
+ if(atlas?.complete&&atlas.naturalWidth){
+  const frame=selectRobotV2Frame(p),sx=(frame%ROBOT_V2_COLS)*ROBOT_V2_CELL_W,sy=Math.floor(frame/ROBOT_V2_COLS)*ROBOT_V2_CELL_H;
+  const width=height*(ROBOT_V2_CELL_W/ROBOT_V2_CELL_H);
+  ctx.drawImage(atlas,sx,sy,ROBOT_V2_CELL_W,ROBOT_V2_CELL_H,pr.x-width/2,pr.y-height,width,height);
+ }else{
+  let name='robot-ready-clean';
+  if(p.pose>0)name=p.motion==='backhand'?'robot-backhand-clean':'robot-forehand-clean';
+  else if(p.moving){const files=p.dx>0?['robot-run-right-a','robot-run-right-b']:['robot-run-left-a','robot-run-left-b'];name=files[Math.floor(p.frameT*ROBOT_RUN_FPS)%2];}
+  const im=images[assets.robot[name]||assets.robot['robot-ready-clean']];
+  if(im?.complete&&im.naturalWidth){const width=height*(im.width/im.height);ctx.drawImage(im,pr.x-width/2,pr.y-height,width,height);}
+ }
+ ctx.restore();
  drawTag(pr.x,pr.y-height-5,p.id,p===robot?'#ff6078':p===robot2?'#ffa944':'#b98cff',true);
 }
 function drawTag(x,y,t,color,compact=false){ctx.save();ctx.font=compact?'bold 11px system-ui':'bold 13px system-ui';ctx.textAlign='center';const pad=compact?10:15,w=Math.max(compact?34:44,ctx.measureText(t).width+pad),h=compact?16:19,top=y-(compact?11:13);ctx.fillStyle=compact?'#081b2da8':'#081b2dbd';ctx.fillRect(x-w/2,top,w,h);ctx.fillStyle=color;ctx.fillText(t,x,y);ctx.restore();}
@@ -1403,7 +1447,7 @@ function render(){ctx.clearRect(0,0,W,H);const court=images[courtAsset];if(court
 }
 // The bridge can be used only by online.html (same origin iframe).
 function getSnapshot(){if(netMode!=='host'||phase==='loading')return null;
- const fields=p=>({x:p.x,z:p.z,motion:p.motion,visualFacing:p===partner?p.visualFacing:undefined,visualIdleT:p===partner?p.visualIdleT:undefined,previous:p.previous,frameT:p.frameT,pose:p.pose,moving:p.moving,dx:p.dx,stamina:p.stamina,charge:p.charge,cool:p.cool,stridePhase:p.stridePhase,recoverT:p.recoverT,savePoseT:p.savePoseT,saveFrame:p.saveFrame,visualFacing:p===human?p.visualFacing:p.visualFacing,visualPending:p===human?p.visualPending:undefined,visualPendingT:p===human?p.visualPendingT:undefined,visualIdleT:p===human?p.visualIdleT:p.visualIdleT,visualBlendT:p===human?p.visualBlendT:undefined,visualExitT:p===human?p.visualExitT:undefined,jumpT:p.jumpT||0,jumpDuration:p.jumpDuration||.46});
+ const fields=p=>({x:p.x,z:p.z,motion:p.motion,visualFacing:p===partner?p.visualFacing:undefined,visualIdleT:p===partner?p.visualIdleT:undefined,previous:p.previous,frameT:p.frameT,pose:p.pose,moving:p.moving,dx:p.dx,visualReachX:p.visualReachX,visualHitHeight:p.visualHitHeight,stamina:p.stamina,charge:p.charge,cool:p.cool,stridePhase:p.stridePhase,recoverT:p.recoverT,savePoseT:p.savePoseT,saveFrame:p.saveFrame,visualFacing:p===human?p.visualFacing:p.visualFacing,visualPending:p===human?p.visualPending:undefined,visualPendingT:p===human?p.visualPendingT:undefined,visualIdleT:p===human?p.visualIdleT:p.visualIdleT,visualBlendT:p===human?p.visualBlendT:undefined,visualExitT:p===human?p.visualExitT:undefined,jumpT:p.jumpT||0,jumpDuration:p.jumpDuration||.46});
  return {phase,paused,help,clock,serveBounceT,server,scoreP:[...scoreP],games:[...games],rally,longestRally,pointDelay,pointInGame,nearServerMember,farServerMember,
   tempoIndex,skillIndex,alert,alertT,boost,robotCharge,robotStamina,serveFaults,remoteActive,powerBannerT,lateralNormal,lateralPower,lastLateralMode,
   power1:charging?clamp((clock-charging.started)/1.15,0,1):queued?.power||0,
