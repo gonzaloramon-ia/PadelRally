@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: padel-rally-coop-alpha
-    runtime: python
-    buildCommand: pip install -r net/requirements.txt
-    startCommand: python net/server.py --host 0.0.0.0

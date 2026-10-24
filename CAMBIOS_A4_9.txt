@@ -1,8 +1,0 @@
-PADEL RALLY A4.9 — CORRECCIONES CONTROLADAS (11/10/2026)
-
-Corrige la pantalla CONFIGURAR TECLAS en el menú: ahora tiene estilos y layout responsivos propios, sin quedar fuera del panel.
-El menú recrea la lista de opciones como botones HTML reales por encima de una cubierta oscura que tapa las letras y el resaltado integrados en la imagen (se mantiene intacta la cancha y el logo aprobados). Solo un botón a la vez usa el brillo activo. Se eliminó el zoom del fondo y se redujo el blur de paneles de 4px a 1px.
-Saque 2 vs 2: se corrige el orden de los cuatro servidores y se mantienen fijos los lados de los receptores entre puntos de un mismo game. Sacador y alternancia derecha/izquierda se conservan.
-
-NO SE MODIFICÓ: física, potencia, rebotes, golpeos, velocidades, niveles de dificultad, assets ni IA de los rallies.
-SIGUIENTE ITERACIÓN: sets, tie-break, modos 1vs1 / 2vs1, entrenamiento y carrera; requieren pruebas adicionales. El marcador de puntos/games existente se conserva, pendiente de validación de sets.
