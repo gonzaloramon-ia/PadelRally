@@ -162,6 +162,40 @@ const skillLevels=[
 ];
 // AI movement speed is difficulty-dependent, but robot sprite cadence is not.
 const ROBOT_RUN_FPS=8;
+// Robot rendering calibration only. These values never feed AI, contacts or physics.
+// Global size makes far-court rivals easier to read; per-sprite anchors keep the
+// planted foot / support point stable while changing poses.
+const ROBOT_VISUAL_GLOBAL_SCALE=1.10;
+const ROBOT_POSE_PREP_END=.24,ROBOT_POSE_IMPACT_END=.57;
+const ROBOT_VISUAL_TUNE={
+ 'robot-backhand-followthrough-up':{ax:.396,ay:.990,scale:.98},
+ 'robot-backhand-prepare-clean-v2':{ax:.307,ay:.992,scale:1.01},
+ 'robot-backhand-up':{ax:.672,ay:.990,scale:.98},
+ 'robot-forehand-01':{ax:.490,ay:.992,scale:1.00},
+ 'robot-forehand-followthrough-up':{ax:.604,ay:.990,scale:.98},
+ 'robot-forehand-up':{ax:.329,ay:.990,scale:.98},
+ 'robot-move-left-01':{ax:.511,ay:.992,scale:1.00},
+ 'robot-move-left-02':{ax:.282,ay:.992,scale:1.02},
+ 'robot-move-right-01':{ax:.489,ay:.992,scale:1.00},
+ 'robot-move-right-02':{ax:.718,ay:.992,scale:1.02},
+ 'robot-ready-01':{ax:.510,ay:.992,scale:1.00},
+ 'robot-ready-02':{ax:.516,ay:.988,scale:1.00},
+ 'robot-ready-clean-v2':{ax:.419,ay:.992,scale:.97},
+ 'robot-ready-diagonal-left':{ax:.726,ay:.992,scale:1.02},
+ 'robot-ready-diagonal-right-01':{ax:.296,ay:.992,scale:1.01},
+ 'robot-ready-diagonal-right-02':{ax:.319,ay:.992,scale:1.00},
+ 'robot-ready-diagonal-right':{ax:.274,ay:.992,scale:1.02},
+ 'robot-run-left-01':{ax:.272,ay:.990,scale:1.03},
+ 'robot-run-left-02':{ax:.292,ay:.992,scale:1.03},
+ 'robot-run-right-01':{ax:.729,ay:.990,scale:1.03},
+ 'robot-run-right-02':{ax:.708,ay:.992,scale:1.03},
+ 'robot-slice-left':{ax:.537,ay:.992,scale:1.01},
+ 'robot-slice-rigth':{ax:.463,ay:.992,scale:1.01},
+ 'robot-stretching-left-2':{ax:.422,ay:.992,scale:1.01},
+ 'robot-stretching-left':{ax:.401,ay:.992,scale:1.01},
+ 'robot-stretching-right-2':{ax:.578,ay:.992,scale:1.01},
+ 'robot-stretching-right':{ax:.599,ay:.992,scale:1.01}
+};
 // Menu launcher: pass user selections to the exact same game engine.
 // Direct game and online iframe retain the original defaults.
 const menuQuery=gameQuery,fromMainMenu=menuQuery.get('fromMenu')==='1';
@@ -1297,7 +1331,7 @@ function drawRobotActor(p){
   const left=(p.robotStretchDir||-1)<0,idx=Math.floor((.16-p.robotStretchT)*18)%2;
   choice=pick(left?(idx?['robot-stretching-left-2','robot-stretching-left']:['robot-stretching-left','robot-stretching-left-2']):(idx?['robot-stretching-right-2','robot-stretching-right']:['robot-stretching-right','robot-stretching-right-2']));
  }else if(p.pose>0){
-  const shot=p.robotVisualShot||p.motion,progress=clamp(1-p.pose/.42,0,1),stage=progress<.32?0:progress<.70?1:2;
+  const shot=p.robotVisualShot||p.motion,progress=clamp(1-p.pose/.42,0,1),stage=progress<ROBOT_POSE_PREP_END?0:progress<ROBOT_POSE_IMPACT_END?1:2;
   if(p.robotLowContact){
    choice=pick((p.robotContactDir||1)<0?['robot-slice-left']:['robot-slice-rigth']);
   }else if(shot==='backhand'){
@@ -1320,14 +1354,16 @@ function drawRobotActor(p){
   const look=ball&&phase==='rally'&&ball.lastHit===0?ball.x-p.x:0,idleIdx=(Math.floor(clock*2.15)+(p===robot2?1:p===robot3?2:0))%3;
   if(look<-.85)choice=pick(['robot-ready-diagonal-left','robot-ready-clean-v2']);
   else if(look>.85)choice=pick(idleIdx%2?['robot-ready-diagonal-right-02','robot-ready-diagonal-right-01']:['robot-ready-diagonal-right-01','robot-ready-diagonal-right-02']);
-  else choice=pick([[['robot-ready-01','robot-ready-02'][idleIdx%2]],'robot-ready-clean-v2','robot-ready-clean']);
+  else choice=pick([['robot-ready-01','robot-ready-02'][idleIdx%2],'robot-ready-clean-v2','robot-ready-clean']);
  }
  if(!choice)choice=available('robot-ready-clean');if(!choice)return;
- const im=choice.im,pr=project(p.x,p.z),height=196*pr.scale,width=height*(im.width/im.height);
+ const im=choice.im,pr=project(p.x,p.z),tune=ROBOT_VISUAL_TUNE[choice.name]||{ax:.5,ay:1,scale:1};
+ const height=196*pr.scale*ROBOT_VISUAL_GLOBAL_SCALE*tune.scale,width=height*(im.width/im.height);
+ const left=pr.x-width*tune.ax,top=pr.y-height*tune.ay;
  ctx.save();if(p===robot2){ctx.filter='hue-rotate(135deg) saturate(1.3)';}else if(p===robot3){ctx.filter='hue-rotate(245deg) saturate(1.25)';}
- ctx.drawImage(im,pr.x-width/2,pr.y-height,width,height);ctx.restore();
+ ctx.drawImage(im,left,top,width,height);ctx.restore();
  // Rival names stay clear of the net: smaller and above the robot silhouette.
- drawTag(pr.x,pr.y-height-5,p.id,p===robot?'#ff6078':p===robot2?'#ffa944':'#b98cff',true);
+ drawTag(pr.x,top-5,p.id,p===robot?'#ff6078':p===robot2?'#ffa944':'#b98cff',true);
 }
 function drawTag(x,y,t,color,compact=false){ctx.save();ctx.font=compact?'bold 11px system-ui':'bold 13px system-ui';ctx.textAlign='center';const pad=compact?10:15,w=Math.max(compact?34:44,ctx.measureText(t).width+pad),h=compact?16:19,top=y-(compact?11:13);ctx.fillStyle=compact?'#081b2da8':'#081b2dbd';ctx.fillRect(x-w/2,top,w,h);ctx.fillStyle=color;ctx.fillText(t,x,y);ctx.restore();}
 function drawServeBallPoint(p,scale){
