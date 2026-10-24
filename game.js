@@ -237,7 +237,7 @@ function fx(id,{who=0,power=.55,shot='forehand'}={}){
  if(!sfxOn||!audioUnlocked)return;
  let group=id,glassImpact=false;
  if(id==='pala')group=who===1?'pala_robot':shot==='smash'||power>.78?'pala_fuerte':power<.43||shot==='lob'?'pala_suave':'pala_media';
- else if(id==='vidrio'){group='pala_suave';glassImpact=true;}
+ else if(id==='vidrio'){group=recordings.vidrio_pala?'vidrio_pala':'pala_suave';glassImpact=true;}
  else if(id==='pique')group='pique';
  else if(id==='reaccion')group='grito';
  const files=recordings[group], paths=Array.isArray(files)?files:files?[files]:[];
