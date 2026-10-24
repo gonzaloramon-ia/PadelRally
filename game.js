@@ -253,7 +253,7 @@ function readCareerStartEnergy(){
 let careerEnergyStart=readCareerStartEnergy();
 function resetPositions(){
  const side=pointInGame%2===0?1:-1;
- for(const p of [human,partner,partner2,robot,robot2,robot3]){p.pose=0;p.frameT=0;p.moving=false;p.dx=0;p.cool=0;p.thinking=0;p.charge=0;p.ivx=0;p.ivz=0;p.motion=p.team===0?'idle':'ready';}
+ for(const p of [human,partner,partner2,robot,robot2,robot3]){p.pose=0;p.frameT=0;p.moving=false;p.dx=0;p.cool=0;p.thinking=0;p.charge=0;p.ivx=0;p.ivz=0;p.motion=p.team===0?'idle':'ready';p.robotVisualSpeed=0;p.robotVisualIntent='ready';p.robotVisualDir=0;p.robotVisualShot='';p.robotStretchT=0;p.robotStretchDir=0;p.robotLowContact=false;p.robotContactDir=0;}
  const ns=servingActor(0),fs=servingActor(1);
  const nf=members[0].find(x=>x!==ns)||null,ff=members[1].find(x=>x!==fs)||null;
  if(is3v3){
@@ -551,7 +551,17 @@ if(!bank){
   p.motion=nearAI?(bank?'glass':shot==='smash'?'smash':shot==='backhand'?'backhand':'forehand'):(shot==='backhand'?'backhand':'forehand');p.pose=.42;p.cool=.42;p.frameT=0;
   p.charge=powerC;
   if(nearAI&&!bank&&shot==='smash'){p.jumpDuration=.42;p.jumpT=p.jumpDuration;}
-  if(p.team===1){robotThinking=0;robotCharge=powerC;}else {message('COMPAÑERO DEVUELVE · '+label[shot],.55);}
+  if(p.team===1){
+   robotThinking=0;robotCharge=powerC;
+   // The contact is already valid here. These values only choose artwork,
+   // so a stretching frame can never enlarge the robot's real racket reach.
+   p.robotVisualShot=shot;
+   p.robotContactDir=dx<0?-1:1;
+   p.robotLowContact=b.h<.82&&shot!=='smash'&&shot!=='lob';
+   const rr=skillLevels[skillIndex].reach||1,edgeNorm=Math.sqrt((dx*dx)/(rr*rr)+(dz*dz)/(rr*rr));
+   p.robotStretchT=!bank&&shot!=='smash'&&edgeNorm>=.73?.16:0;
+   p.robotStretchDir=dx<0?-1:1;
+  }else {message('COMPAÑERO DEVUELVE · '+label[shot],.55);}
  }
  fx('pala',{who,power:powerC,shot});if(shot==='smash'&&powerC>.72&&Math.random()<.28)fx('reaccion',{who,power:powerC});rally++;return true;}
 function queueShot(shot,power,shotAim=null){if(phase!=='rally'||!ball||ball.lastHit===0)return;
@@ -926,7 +936,7 @@ function separateTeammates(){
 }
 function stepDoublesAI(dt){
  updatePartnerLane();
- for(const p of [partner,partner2,robot,robot2,robot3]){if(!activeActors.has(p)||(p===partner&&remoteActive))continue;const oldPose=p.pose;p.cool=Math.max(0,p.cool-dt);p.pose=Math.max(0,p.pose-dt);if(p.team===0&&p!==human)p.jumpT=Math.max(0,(p.jumpT||0)-dt);if(p.pose<=0)p.charge=0;
+ for(const p of [partner,partner2,robot,robot2,robot3]){if(!activeActors.has(p)||(p===partner&&remoteActive))continue;const oldPose=p.pose;p.cool=Math.max(0,p.cool-dt);p.pose=Math.max(0,p.pose-dt);if(p.team===0&&p!==human)p.jumpT=Math.max(0,(p.jumpT||0)-dt);if(p.team===1)p.robotStretchT=Math.max(0,(p.robotStretchT||0)-dt);if(p.pose<=0)p.charge=0;
   if(p.team===0&&p!==human){p.frameT+=dt;p.recoverT=Math.max(0,(p.recoverT||0)-dt);p.splitStepT=Math.max(0,(p.splitStepT||0)-dt);if(oldPose>0&&p.pose<=0)p.recoverT=.18;}
  }
  const owner=servingActor();
@@ -1021,6 +1031,15 @@ function stepDoublesAI(dt){
     p.stamina=clamp(p.stamina+(p.moving?-2.2:(phase==='pointEnd'?3.5:1.6))*dt,0,100);
    }else if(len>.17){const move=Math.min(len,speed*dt),mv=resolveActorMove(p,p.x+dx/len*move,p.z+dz/len*move,team);p.x=mv.x;p.z=mv.z;if(p.team===1)p.frameT+=dt;p.stamina=clamp(p.stamina-2.2*dt,0,100);}
    else p.stamina=clamp(p.stamina+(phase==='pointEnd'?3.5:1.6)*dt,0,100);
+   if(p.team===1){
+    // Visual locomotion only: derive animation from movement the AI already executed.
+    // This never changes destination, speed, reach, hit timing or physics.
+    const travelled=hypot(p.x-oldX,p.z-oldZ),oldScreen=project(oldX,oldZ),newScreen=project(p.x,p.z),screenDx=newScreen.x-oldScreen.x;
+    p.robotVisualSpeed=dt>0?travelled/dt:0;
+    p.robotVisualDir=Math.abs(screenDx)>.12?Math.sign(screenDx):(Math.abs(dx)>.06?Math.sign(dx):(p.robotVisualDir||(p.x<0?-1:1)));
+    const mostlyDepth=Math.abs(dz)>Math.abs(dx)*1.18;
+    p.robotVisualIntent=p.moving?((incoming&&chaser===p)||len>1.15?'run':mostlyDepth?'shuffle':'move'):'ready';
+   }
    if(p.team===0&&p!==human){
     const travelled=hypot(p.x-oldX,p.z-oldZ);p.visualSpeed=dt>0?travelled/dt:0;
     if(p.moving)p.stridePhase=(p.stridePhase+travelled*1.95)%4096;
@@ -1269,11 +1288,42 @@ function drawHumanActor(p,which){
  drawTag(pr.x,pr.y+15,p.id,p===human?'#35d8ff':'#ffe14f');
 }
 function drawRobotActor(p){
- let name='robot-ready-clean';
- if(p.pose>0)name=p.motion==='backhand'?'robot-backhand-clean':'robot-forehand-clean';
- else if(p.moving){const files=p.dx>0?['robot-run-right-a','robot-run-right-b']:['robot-run-left-a','robot-run-left-b'];name=files[Math.floor(p.frameT*ROBOT_RUN_FPS)%2];}
- const im=images[assets.robot[name]||assets.robot['robot-ready-clean']];if(!im?.complete||!im.naturalWidth)return;
- const pr=project(p.x,p.z),height=196*pr.scale,width=height*(im.width/im.height);
+ // Normalized robot set: animation mirrors existing world movement; no AI,
+ // collision, hitbox, timing or ball-physics value is read back from these sprites.
+ const available=name=>{const path=assets.robot[name],im=path&&images[path];return im?.complete&&im.naturalWidth?{name,path,im}:null;};
+ const pick=(names,fallback='robot-ready-clean')=>{for(const n of names){const hit=available(n);if(hit)return hit;}return available(fallback);};
+ let choice=null;
+ if((p.robotStretchT||0)>0){
+  const left=(p.robotStretchDir||-1)<0,idx=Math.floor((.16-p.robotStretchT)*18)%2;
+  choice=pick(left?(idx?['robot-stretching-left-2','robot-stretching-left']:['robot-stretching-left','robot-stretching-left-2']):(idx?['robot-stretching-right-2','robot-stretching-right']:['robot-stretching-right','robot-stretching-right-2']));
+ }else if(p.pose>0){
+  const shot=p.robotVisualShot||p.motion,progress=clamp(1-p.pose/.42,0,1),stage=progress<.32?0:progress<.70?1:2;
+  if(p.robotLowContact){
+   choice=pick((p.robotContactDir||1)<0?['robot-slice-left']:['robot-slice-rigth']);
+  }else if(shot==='backhand'){
+   const seq=['robot-backhand-prepare-clean-v2','robot-backhand-up','robot-backhand-followthrough-up'];
+   choice=pick([seq[stage],stage===0?'robot-backhand-prepare-clean':'robot-backhand-clean','robot-backhand-clean']);
+  }else{
+   const seq=['robot-forehand-01','robot-forehand-up','robot-forehand-followthrough-up'];
+   choice=pick([seq[stage],stage===2?'robot-forehand-followthrough-clean':'robot-forehand-clean','robot-forehand-clean']);
+  }
+ }else if(p.moving){
+  const dir=p.robotVisualDir||Math.sign(p.dx)||1,intent=p.robotVisualIntent||'run',idx=Math.floor(p.frameT*ROBOT_RUN_FPS)%2;
+  if(intent==='shuffle'){
+   choice=dir<0?pick(['robot-ready-diagonal-left','robot-move-left-01']):pick(idx?['robot-ready-diagonal-right-02','robot-ready-diagonal-right-01']:['robot-ready-diagonal-right-01','robot-ready-diagonal-right-02']);
+  }else if(intent==='move'){
+   choice=dir<0?pick(idx?['robot-move-left-02','robot-move-left-01']:['robot-move-left-01','robot-move-left-02'],'robot-run-left-a'):pick(idx?['robot-move-right-02','robot-move-right-01']:['robot-move-right-01','robot-move-right-02'],'robot-run-right-a');
+  }else{
+   choice=dir<0?pick(idx?['robot-run-left-02','robot-run-left-01']:['robot-run-left-01','robot-run-left-02'],idx?'robot-run-left-b':'robot-run-left-a'):pick(idx?['robot-run-right-02','robot-run-right-01']:['robot-run-right-01','robot-run-right-02'],idx?'robot-run-right-b':'robot-run-right-a');
+  }
+ }else{
+  const look=ball&&phase==='rally'&&ball.lastHit===0?ball.x-p.x:0,idleIdx=(Math.floor(clock*2.15)+(p===robot2?1:p===robot3?2:0))%3;
+  if(look<-.85)choice=pick(['robot-ready-diagonal-left','robot-ready-03','robot-ready-clean-v2']);
+  else if(look>.85)choice=pick(idleIdx%2?['robot-ready-diagonal-right-02','robot-ready-diagonal-right-01']:['robot-ready-diagonal-right-01','robot-ready-diagonal-right-02']);
+  else choice=pick([['robot-ready-01','robot-ready-02','robot-ready-03'][idleIdx],'robot-ready-clean-v2','robot-ready-clean']);
+ }
+ if(!choice)choice=available('robot-ready-clean');if(!choice)return;
+ const im=choice.im,pr=project(p.x,p.z),height=196*pr.scale,width=height*(im.width/im.height);
  ctx.save();if(p===robot2){ctx.filter='hue-rotate(135deg) saturate(1.3)';}else if(p===robot3){ctx.filter='hue-rotate(245deg) saturate(1.25)';}
  ctx.drawImage(im,pr.x-width/2,pr.y-height,width,height);ctx.restore();
  // Rival names stay clear of the net: smaller and above the robot silhouette.
@@ -1403,7 +1453,7 @@ function render(){ctx.clearRect(0,0,W,H);const court=images[courtAsset];if(court
 }
 // The bridge can be used only by online.html (same origin iframe).
 function getSnapshot(){if(netMode!=='host'||phase==='loading')return null;
- const fields=p=>({x:p.x,z:p.z,motion:p.motion,visualFacing:p===partner?p.visualFacing:undefined,visualIdleT:p===partner?p.visualIdleT:undefined,previous:p.previous,frameT:p.frameT,pose:p.pose,moving:p.moving,dx:p.dx,stamina:p.stamina,charge:p.charge,cool:p.cool,stridePhase:p.stridePhase,recoverT:p.recoverT,savePoseT:p.savePoseT,saveFrame:p.saveFrame,visualFacing:p===human?p.visualFacing:p.visualFacing,visualPending:p===human?p.visualPending:undefined,visualPendingT:p===human?p.visualPendingT:undefined,visualIdleT:p===human?p.visualIdleT:p.visualIdleT,visualBlendT:p===human?p.visualBlendT:undefined,visualExitT:p===human?p.visualExitT:undefined,jumpT:p.jumpT||0,jumpDuration:p.jumpDuration||.46});
+ const fields=p=>({x:p.x,z:p.z,motion:p.motion,visualFacing:p===partner?p.visualFacing:undefined,visualIdleT:p===partner?p.visualIdleT:undefined,previous:p.previous,frameT:p.frameT,pose:p.pose,moving:p.moving,dx:p.dx,stamina:p.stamina,charge:p.charge,cool:p.cool,stridePhase:p.stridePhase,recoverT:p.recoverT,savePoseT:p.savePoseT,saveFrame:p.saveFrame,visualFacing:p===human?p.visualFacing:p.visualFacing,visualPending:p===human?p.visualPending:undefined,visualPendingT:p===human?p.visualPendingT:undefined,visualIdleT:p===human?p.visualIdleT:p.visualIdleT,visualBlendT:p===human?p.visualBlendT:undefined,visualExitT:p===human?p.visualExitT:undefined,jumpT:p.jumpT||0,jumpDuration:p.jumpDuration||.46,robotVisualSpeed:p.robotVisualSpeed||0,robotVisualIntent:p.robotVisualIntent||'',robotVisualDir:p.robotVisualDir||0,robotVisualShot:p.robotVisualShot||'',robotStretchT:p.robotStretchT||0,robotStretchDir:p.robotStretchDir||0,robotLowContact:!!p.robotLowContact,robotContactDir:p.robotContactDir||0});
  return {phase,paused,help,clock,serveBounceT,server,scoreP:[...scoreP],games:[...games],rally,longestRally,pointDelay,pointInGame,nearServerMember,farServerMember,
   tempoIndex,skillIndex,alert,alertT,boost,robotCharge,robotStamina,serveFaults,remoteActive,powerBannerT,lateralNormal,lateralPower,lastLateralMode,
   power1:charging?clamp((clock-charging.started)/1.15,0,1):queued?.power||0,
@@ -1448,5 +1498,5 @@ window.PadelOnlineBridge={
  debug(){return{mode:netMode,remoteActive,remoteButtons:{...remoteButtons},remoteCharge,remoteQueued,guestSnapshotSeq};}
 };
 function loop(t){const dt=last?(t-last)/1000:0;last=t;tick(dt);musicLoop();render();requestAnimationFrame(loop);}requestAnimationFrame(loop);
-window.__padelDebug=()=>({mode:matchFormat,exteriorTest:{door:[DOOR_Z_MIN,DOOR_Z_MAX],outerX:OUTER_X,innerX:[PLAYER_LEFT_X,PLAYER_RIGHT_X],humanOutside:actorOutside(human),ballOutside:ballOutside(ball),accessOpen:exteriorAccessOpen(0)},autoReal,phase,paused,help,clock,loaded,requested,errors,server,nearServerMember,farServerMember,servingActor:servingActor().id,allyAttempted,robotAttempted,lastInterception,roster:[...members[0],...members[1]].map(p=>({id:p.id,team:p.team,x:p.x,z:p.z,cool:p.cool,moving:p.moving})),score:[score(0),score(1)],games:[...games],rally,longestRally,serveFaults,pointInGame,servingSide:pointInGame%2===0?'DERECHA':'IZQUIERDA',boost,robotStamina,lastBank,lastLateralMode,lateralNormal,lateralPower,powerBannerT,showShotStats,partnerVisual:{motion:partner.motion,visualFacing:partner.visualFacing,visualPending:partner.visualPending,stridePhase:partner.stridePhase,frameT:partner.frameT,recoverT:partner.recoverT,splitStepT:partner.splitStepT,visualSpeed:partner.visualSpeed},ball:ball?{x:ball.x,z:ball.z,h:ball.h,vx:ball.vx,vz:ball.vz,vh:ball.vh,lastHit:ball.lastHit,bounces:ball.bounces,serveFlight:ball.serveFlight,bank:ball.bank,bankRoute:ball.bankRoute,bankStage:ball.bankStage,wallCount:ball.wallCount,exitQuality:ball.exitTest?.quality??null}:null,tapiaGuard:tapiaGuard?{activeFrom:tapiaGuard.activeFrom,until:tapiaGuard.until}:null,human:{x:human.x,z:human.z,motion:human.motion,visualFacing:human.visualFacing,visualPending:human.visualPending,visualBlendT:human.visualBlendT,stridePhase:human.stridePhase,height:215*project(human.x,human.z).scale},robot:{x:robot.x,z:robot.z,motion:robot.motion},tempo:tempos[tempoIndex].name,tempoScale:tempos[tempoIndex].scale,skill:skillLevels[skillIndex].name,skillParams:skillLevels[skillIndex],ambientOn,sfxOn,robotAttempted,partnerLane,playerSeparation:hypot(partner.x-human.x,partner.z-human.z),lastRobotTarget,robotAimWhite,robotAimYellow,nearChaseOwner:nearChaseOwner?.id||null,nearChaseSwitches,a48Enabled,a48Facing:human.visualFacing,a48BankRoute:human.visualBankRoute||null,whiteJump:human.jumpT||0,yellowJump:partner.jumpT||0,ballSpeedFactor:(tempos[tempoIndex].ballScale||tempos[tempoIndex].scale)/tempos[tempoIndex].scale,velocity:{vx:human.vx,vz:human.vz},charging:charging?.shot||null,queued:queued?.shot||null,queuedRoute:queued?.route||null});
+window.__padelDebug=()=>({mode:matchFormat,exteriorTest:{door:[DOOR_Z_MIN,DOOR_Z_MAX],outerX:OUTER_X,innerX:[PLAYER_LEFT_X,PLAYER_RIGHT_X],humanOutside:actorOutside(human),ballOutside:ballOutside(ball),accessOpen:exteriorAccessOpen(0)},autoReal,phase,paused,help,clock,loaded,requested,errors,server,nearServerMember,farServerMember,servingActor:servingActor().id,allyAttempted,robotAttempted,lastInterception,roster:[...members[0],...members[1]].map(p=>({id:p.id,team:p.team,x:p.x,z:p.z,cool:p.cool,moving:p.moving})),score:[score(0),score(1)],games:[...games],rally,longestRally,serveFaults,pointInGame,servingSide:pointInGame%2===0?'DERECHA':'IZQUIERDA',boost,robotStamina,lastBank,lastLateralMode,lateralNormal,lateralPower,powerBannerT,showShotStats,partnerVisual:{motion:partner.motion,visualFacing:partner.visualFacing,visualPending:partner.visualPending,stridePhase:partner.stridePhase,frameT:partner.frameT,recoverT:partner.recoverT,splitStepT:partner.splitStepT,visualSpeed:partner.visualSpeed},ball:ball?{x:ball.x,z:ball.z,h:ball.h,vx:ball.vx,vz:ball.vz,vh:ball.vh,lastHit:ball.lastHit,bounces:ball.bounces,serveFlight:ball.serveFlight,bank:ball.bank,bankRoute:ball.bankRoute,bankStage:ball.bankStage,wallCount:ball.wallCount,exitQuality:ball.exitTest?.quality??null}:null,tapiaGuard:tapiaGuard?{activeFrom:tapiaGuard.activeFrom,until:tapiaGuard.until}:null,human:{x:human.x,z:human.z,motion:human.motion,visualFacing:human.visualFacing,visualPending:human.visualPending,visualBlendT:human.visualBlendT,stridePhase:human.stridePhase,height:215*project(human.x,human.z).scale},robot:{x:robot.x,z:robot.z,motion:robot.motion,visualIntent:robot.robotVisualIntent,visualDir:robot.robotVisualDir,visualShot:robot.robotVisualShot,stretchT:robot.robotStretchT,lowContact:robot.robotLowContact},tempo:tempos[tempoIndex].name,tempoScale:tempos[tempoIndex].scale,skill:skillLevels[skillIndex].name,skillParams:skillLevels[skillIndex],ambientOn,sfxOn,robotAttempted,partnerLane,playerSeparation:hypot(partner.x-human.x,partner.z-human.z),lastRobotTarget,robotAimWhite,robotAimYellow,nearChaseOwner:nearChaseOwner?.id||null,nearChaseSwitches,a48Enabled,a48Facing:human.visualFacing,a48BankRoute:human.visualBankRoute||null,whiteJump:human.jumpT||0,yellowJump:partner.jumpT||0,ballSpeedFactor:(tempos[tempoIndex].ballScale||tempos[tempoIndex].scale)/tempos[tempoIndex].scale,velocity:{vx:human.vx,vz:human.vz},charging:charging?.shot||null,queued:queued?.shot||null,queuedRoute:queued?.route||null});
 })();
