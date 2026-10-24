@@ -272,7 +272,8 @@ function teammates(who){return members[who];}
 
 const images={},errors=[];let requested=0,loaded=0;
 function load(path){if(images[path])return images[path];const im=new Image();requested++;images[path]=im;im.onload=()=>{loaded++;if(phase==='loading'&&loaded+errors.length===requested){phase='intro';message('Recursos listos',2);if(fromMainMenu)newMatch();}};im.onerror=()=>{errors.push(path);console.warn('Asset failed',path);if(phase==='loading'&&loaded+errors.length===requested){phase='intro';if(fromMainMenu)newMatch();}};im.src=path;return im;}
-const courtAsset=menuQuery.get('court')||'assets/court_clean.png';load(courtAsset);for(const a of Object.values(assets.human))for(const s of a)load(s.src);for(const path of Object.values(assets.robot))load(path);for(const v of Object.values(yellow))load(v.src);if(a44Enabled)for(const v of Object.values(a44))load(v.src);
+const courtParam=menuQuery.get('court')||'assets/court_clean.png';
+const courtAsset=courtParam==='__padel_rally_test__'&&window.PADEL_TEST_COURT_DATA?window.PADEL_TEST_COURT_DATA:courtParam;load(courtAsset);for(const a of Object.values(assets.human))for(const s of a)load(s.src);for(const path of Object.values(assets.robot))load(path);for(const v of Object.values(yellow))load(v.src);if(a44Enabled)for(const v of Object.values(a44))load(v.src);
 if(a45Enabled)for(const seq of Object.values(a45))for(const v of seq)load(v.src);
 if(a48Enabled)for(const seq of Object.values(a48))for(const v of seq)load(v.src);
 function message(t,secs=1.1){const important=/^(PUNTO|JUEGO|DOBLE PIQUE|DOBLE FALTA|PRIMER SAQUE|FALTA DE SAQUE|FUERA|RED|VIDRIO|PIQUE EN CAMPO|LA IA FALLÓ|COMPAÑERO FALLÓ|PARTIDO GANADO|PARTIDO PERDIDO)/.test(String(t));alert=t;alertT=Math.max(secs,important?2.45:secs);status.textContent=t;}
