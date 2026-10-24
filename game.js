@@ -1318,9 +1318,9 @@ function drawRobotActor(p){
   }
  }else{
   const look=ball&&phase==='rally'&&ball.lastHit===0?ball.x-p.x:0,idleIdx=(Math.floor(clock*2.15)+(p===robot2?1:p===robot3?2:0))%3;
-  if(look<-.85)choice=pick(['robot-ready-diagonal-left','robot-ready-03','robot-ready-clean-v2']);
+  if(look<-.85)choice=pick(['robot-ready-diagonal-left','robot-ready-clean-v2']);
   else if(look>.85)choice=pick(idleIdx%2?['robot-ready-diagonal-right-02','robot-ready-diagonal-right-01']:['robot-ready-diagonal-right-01','robot-ready-diagonal-right-02']);
-  else choice=pick([['robot-ready-01','robot-ready-02','robot-ready-03'][idleIdx],'robot-ready-clean-v2','robot-ready-clean']);
+  else choice=pick([[['robot-ready-01','robot-ready-02'][idleIdx%2]],'robot-ready-clean-v2','robot-ready-clean']);
  }
  if(!choice)choice=available('robot-ready-clean');if(!choice)return;
  const im=choice.im,pr=project(p.x,p.z),height=196*pr.scale,width=height*(im.width/im.height);
