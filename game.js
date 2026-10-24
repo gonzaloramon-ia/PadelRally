@@ -235,9 +235,9 @@ function fx(id,{who=0,power=.55,shot='forehand'}={}){
   if(audioEvents.length>16)audioEvents.shift();
  }
  if(!sfxOn||!audioUnlocked)return;
- let group=id;
+ let group=id,glassImpact=false;
  if(id==='pala')group=who===1?'pala_robot':shot==='smash'||power>.78?'pala_fuerte':power<.43||shot==='lob'?'pala_suave':'pala_media';
- else if(id==='vidrio')group=who===1?'vidrio_lejos':'vidrio_cerca';
+ else if(id==='vidrio'){group='pala_suave';glassImpact=true;}
  else if(id==='pique')group='pique';
  else if(id==='reaccion')group='grito';
  const files=recordings[group], paths=Array.isArray(files)?files:files?[files]:[];
@@ -247,7 +247,7 @@ function fx(id,{who=0,power=.55,shot='forehand'}={}){
  let a=pool.find(v=>v.paused||v.ended);
  if(!a){a=new Audio(path);a.preload='auto';pool.push(a);if(pool.length>5)pool.shift().pause();}
  try{a.currentTime=0;}catch(_){}
- const isFar=who===1,base=group==='grito'?.26:group==='pique'?.56:group.startsWith('vidrio')?.63:.67;
+ const isFar=who===1,base=glassImpact?.34:group==='grito'?.26:group==='pique'?.56:.67;
  a.volume=clamp(base*(isFar?.68:1)*(0.85+power*.2),0,1);
  a.play().catch(()=>{});
 }
