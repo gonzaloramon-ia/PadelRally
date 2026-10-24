@@ -1,8 +1,8 @@
 /* Player key profiles shared by local game and online guest; independent of physics. */
 (function(g){'use strict';
-const defaults={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',backhand:'KeyZ',forehand:'KeyX',lob:'KeyC',smash:'Space',drop:'KeyV',sprint:'ShiftLeft',rear:'KeyS',leftGlass:'KeyA',rightGlass:'KeyD',pause:'KeyP',fullscreen:'KeyF'};
-const labels={up:'Subir',down:'Bajar',left:'Izquierda',right:'Derecha',backhand:'Revés',forehand:'Derecha (golpe)',lob:'Globo',smash:'Remate',drop:'Dejada / corta',sprint:'Correr',rear:'Vidrio fondo',leftGlass:'Vidrio izquierdo',rightGlass:'Vidrio derecho',pause:'Pausa',fullscreen:'Pantalla completa'};
-const legacy={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',backhand:'KeyZ',forehand:'KeyX',lob:'KeyC',smash:'Space',drop:'KeyV',sprint:'ShiftLeft',rear:'KeyS',leftGlass:'KeyA',rightGlass:'KeyD',pause:'KeyP',fullscreen:'KeyF'};
+const defaults={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',backhand:'KeyZ',forehand:'KeyX',lob:'KeyC',smash:'Space',drop:'KeyV',sprint:'ShiftLeft',rear:'KeyS',leftGlass:'KeyA',rightGlass:'KeyD',pause:'KeyP'};
+const labels={up:'Subir',down:'Bajar',left:'Izquierda',right:'Derecha',backhand:'Familia de revés',forehand:'Familia de derecha',lob:'Familia de globo',smash:'Golpes aéreos',drop:'Juego corto / red',sprint:'Correr',rear:'Vidrio fondo',leftGlass:'Vidrio izquierdo',rightGlass:'Vidrio derecho',pause:'Pausa'};
+const legacy={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',backhand:'KeyZ',forehand:'KeyX',lob:'KeyC',smash:'Space',drop:'KeyV',sprint:'ShiftLeft',rear:'KeyS',leftGlass:'KeyA',rightGlass:'KeyD',pause:'KeyP'};
 const remote={up:'up',down:'down',left:'left',right:'right',backhand:'backhand',forehand:'forehand',lob:'lob',smash:'smash',drop:'drop',sprint:'sprint',rear:'rear',leftGlass:'leftGlass',rightGlass:'rightGlass'};
 const STORE='padel-rally-control-profiles-v1';
 let storage={active:'A',profiles:{A:{...defaults},B:{...defaults}}};
@@ -25,7 +25,7 @@ function onKey(e){if(!modal||modal.hidden)return;e.preventDefault();e.stopImmedi
  if(e.code==='Escape'){if(capturing){capturing=null;render();message.textContent='Cambio cancelado.';}else close();return;}
  if(!capturing||e.repeat)return;
  // Do not capture browser/system modifier chords, pure modifier keys or reserved setup keys.
- if(e.ctrlKey||e.altKey||e.metaKey||['ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','Tab','Enter','F5'].includes(e.code)){message.textContent='Elegí una tecla sin Ctrl, Alt o combinaciones del navegador.';return;}
+ if(e.ctrlKey||e.altKey||e.metaKey||['ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','Tab','Enter','F5','F11'].includes(e.code)){message.textContent='Elegí una tecla sin Ctrl, Alt o combinaciones del navegador.';return;}
  const active=mapping(),before=active[capturing],other=actionOf(e.code);
  if(other&&other!==capturing){active[other]=before;message.textContent='Tecla utilizada: se intercambiaron '+labels[other]+' y '+labels[capturing]+'.';}
  else message.textContent='Tecla asignada: '+labels[capturing]+' → '+friendly(e.code)+'.';
@@ -33,7 +33,7 @@ function onKey(e){if(!modal||modal.hidden)return;e.preventDefault();e.stopImmedi
 }
 function mount(button){if(!button)return;
  modal=document.createElement('div');modal.id='padel-controls-dialog';modal.hidden=true;
- modal.innerHTML='<section role="dialog" aria-modal="true" aria-label="Configurar controles"><header><strong>CONFIGURAR CONTROLES</strong><button type="button" id="padel-ctrl-close">Cerrar ×</button></header><div class="padel-profile-bar"><label>Perfil <select id="padel-ctrl-profile"><option value="A">A</option><option value="B">B</option></select></label><button id="padel-ctrl-reset" type="button">Restaurar perfil</button></div><p id="padel-ctrl-note" aria-live="polite"></p><div id="padel-ctrl-grid"></div></section>';
+ modal.innerHTML='<section role="dialog" aria-modal="true" aria-label="Configurar controles"><header><strong>CONFIGURAR CONTROLES</strong><button type="button" id="padel-ctrl-close">Cerrar ×</button></header><div class="padel-profile-bar"><label>Perfil <select id="padel-ctrl-profile"><option value="A">A</option><option value="B">B</option></select></label><button id="padel-ctrl-reset" type="button">Restaurar perfil</button></div><p id="padel-ctrl-note" aria-live="polite"></p><div id="padel-ctrl-grid"></div><p style="margin:14px 0 0;color:#acd7eb;font-size:12px;line-height:1.45">La potencia cambia la variante del golpe. A+S = fondo + izquierdo · D+S = fondo + derecho. ESPACIO: bandeja / víbora / smash; con contexto adecuado puede salir X3/X4. F11 = pantalla completa del navegador.</p></section>';
  document.body.appendChild(modal);message=modal.querySelector('#padel-ctrl-note');grid=modal.querySelector('#padel-ctrl-grid');profileSelect=modal.querySelector('#padel-ctrl-profile');
  profileSelect.onchange=()=>{storage.active=profileSelect.value;capturing=null;save();render();message.textContent='Perfil '+storage.active+' seleccionado.';};
  modal.querySelector('#padel-ctrl-close').onclick=close;
