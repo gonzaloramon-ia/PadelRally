@@ -143,6 +143,7 @@ function closePanel(){if(window.PadelControls?.visible?.())return;$('#overlay').
 function syncSettings(){for(const k of ['tempo','skill'])$('#'+k).value=String(settings[k]);for(const k of ['ambiente','efectos'])$('#'+k).checked=!!settings[k];}
 const quickCourts=[
  {id:'original',name:'Original',court:'assets/court_clean.png'},
+ {id:'padel_rally_test',name:'PADEL RALLY · TEST',court:'__padel_rally_test__',note:'Cancha realista de prueba'},
  {id:'indoor_azul',name:'Indoor Azul',court:'assets/courts/indoor_azul.png'},
  {id:'medieval',name:'Medieval',court:'assets/courts/medieval.png'},
  {id:'prision',name:'Prisión / Underground',court:'assets/courts/prision.png'},
