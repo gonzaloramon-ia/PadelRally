@@ -247,7 +247,7 @@ function fx(id,{who=0,power=.55,shot='forehand'}={}){
  let a=pool.find(v=>v.paused||v.ended);
  if(!a){a=new Audio(path);a.preload='auto';pool.push(a);if(pool.length>5)pool.shift().pause();}
  try{a.currentTime=0;}catch(_){}
- const isFar=who===1,base=glassImpact?.34:group==='grito'?.26:group==='pique'?.56:.67;
+ const isFar=who===1,base=glassImpact?.34:group==='grito'?.26:group==='pique'?.56:group==='pala_suave'?.7705:group==='pala_media'?.8375:group==='pala_fuerte'?.871:.67;
  a.volume=clamp(base*(isFar?.68:1)*(0.85+power*.2),0,1);
  a.play().catch(()=>{});
 }
